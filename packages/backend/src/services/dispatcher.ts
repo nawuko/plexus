@@ -13,6 +13,7 @@ import {
 import { Router } from './router';
 import { TransformerFactory } from './transformer-factory';
 import { logger } from '../utils/logger';
+import { QUOTA_ERROR_PATTERNS } from '../utils/constants';
 import { CooldownManager } from './cooldown-manager';
 import { RouteResult } from './router';
 import { DebugManager } from './debug-manager';
@@ -249,12 +250,23 @@ export class Dispatcher {
       } catch (error: any) {
         lastError = error;
 
-        // Only mark provider failure for retryable errors
-        // Non-retryable errors (413, 422) should NOT trigger cooldown
+        // Determine if we should trigger cooldown:
+        // - If error has routingContext (from handleProviderError), respect its cooldownTriggered flag
+        // - If error is from network/other issues, trigger cooldown unless it's a non-retryable status
+        const hasRoutingContext = !!error?.routingContext;
         const statusCode = error?.routingContext?.statusCode;
         const isNonRetryableClientError = statusCode === 413 || statusCode === 422;
 
-        if (!isNonRetryableClientError) {
+        let shouldTriggerCooldown = false;
+        if (hasRoutingContext) {
+          // Error from handleProviderError - use its decision
+          shouldTriggerCooldown = error.routingContext.cooldownTriggered === true;
+        } else {
+          // Network or other error - trigger cooldown unless it's a known non-retryable code
+          shouldTriggerCooldown = !isNonRetryableClientError;
+        }
+
+        if (shouldTriggerCooldown) {
           CooldownManager.getInstance().markProviderFailure(route.provider, route.model);
         }
         await this.recordAttemptMetric(route, request.requestId, false);
@@ -942,13 +954,30 @@ export class Dispatcher {
 
     const cooldownManager = CooldownManager.getInstance();
 
+    // Check if this is a quota/balance-related 400 error
+    const errorTextLower = errorText.toLowerCase();
+    const isQuotaError400 =
+      response.status === 400 &&
+      QUOTA_ERROR_PATTERNS.some((pattern) => errorTextLower.includes(pattern.toLowerCase()));
+
+    if (isQuotaError400) {
+      logger.warn(
+        `Detected quota/balance error in 400 response from ${route.provider}/${route.model}`
+      );
+    }
+
     // Trigger cooldown for server errors (5xx) and specific client errors:
+    // - 400 Bad Request: Only if it's a quota/balance error (detected above)
     // - 401 Unauthorized: Invalid or expired credentials
     // - 402 Payment Required: Insufficient quota/credits
     // - 403 Forbidden: Permission denied
     // - 408 Request Timeout: Request took too long
     // - 429 Too Many Requests: Rate limit exceeded
-    if (response.status >= 500 || [401, 402, 403, 408, 429].includes(response.status)) {
+    if (
+      response.status >= 500 ||
+      isQuotaError400 ||
+      [401, 402, 403, 408, 429].includes(response.status)
+    ) {
       let cooldownDuration: number | undefined;
 
       // For 429 errors, try to parse provider-specific cooldown duration
@@ -987,6 +1016,10 @@ export class Dispatcher {
       headers: this.sanitizeHeaders(headers || {}),
       statusCode: response.status,
       providerResponse: errorText,
+      cooldownTriggered:
+        response.status >= 500 ||
+        isQuotaError400 ||
+        [401, 402, 403, 408, 429].includes(response.status),
     };
 
     throw error;
