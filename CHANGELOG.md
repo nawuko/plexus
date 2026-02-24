@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.17.3 - 2026-02-24
+
+### v0.17.3: POE Point Value Display Fix
+
+## Bug Fixes
+- Fixed display of full POE point values instead of abbreviated k/M suffixes ([6ecd2c5](https://github.com/mcowger/plexus/commit/6ecd2c5))
+
+---
+The Docker image has been updated and can be found at `ghcr.io/mcowger/plexus:latest`
+
 ## v0.17.2 - 2026-02-24
 
 ### POE quota checker integration and export utilities
