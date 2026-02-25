@@ -8,6 +8,7 @@ export const providerCooldowns = pgTable(
     expiry: bigint('expiry', { mode: 'number' }).notNull(),
     consecutiveFailures: bigint('consecutive_failures', { mode: 'number' }).notNull().default(0),
     createdAt: bigint('created_at', { mode: 'number' }).notNull(),
+    lastError: text('last_error'),
   },
   (table) => ({
     pk: primaryKey({ columns: [table.provider, table.model] }),

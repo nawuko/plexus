@@ -1,0 +1,1 @@
+ALTER TABLE `provider_cooldowns` ADD `last_error` text;

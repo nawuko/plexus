@@ -9,6 +9,7 @@ export const providerCooldowns = sqliteTable(
     expiry: integer('expiry').notNull(),
     consecutiveFailures: integer('consecutive_failures').notNull().default(0),
     createdAt: integer('created_at').notNull(),
+    lastError: text('last_error'),
   },
   (table) => ({
     pk: primaryKey({ columns: [table.provider, table.model] }),

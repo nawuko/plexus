@@ -73,7 +73,7 @@ export const WisdomGateQuotaDisplay: React.FC<WisdomGateQuotaDisplayProps> = ({
           </div>
 
           <div className="relative h-2">
-            <div className="h-2 rounded-md bg-bg-hover overflow-hidden mr-7">
+            <div className="h-2 rounded-md bg-bg-hover overflow-hidden">
               <div
                 className={clsx(
                   'h-full rounded-md transition-all duration-500 ease-out',
@@ -84,15 +84,17 @@ export const WisdomGateQuotaDisplay: React.FC<WisdomGateQuotaDisplayProps> = ({
                 }}
               />
             </div>
-            <div className="absolute inset-y-0 right-0 flex items-center text-[10px] font-semibold text-text">
-              {formatCost(monthlyWindow.used ?? 0)} / {formatCost(monthlyWindow.limit ?? 0)}
-            </div>
           </div>
 
-          <div className="flex items-baseline gap-2">
-            <span className="text-xs text-text-secondary">Remaining:</span>
-            <span className="text-xs font-semibold text-success">
-              {formatCost(monthlyWindow.remaining ?? 0)}
+          <div className="flex items-baseline justify-between gap-2">
+            <span className="text-xs text-text-secondary">
+              Remaining:{' '}
+              <span className="font-semibold text-success">
+                {formatCost(monthlyWindow.remaining ?? 0)}
+              </span>
+            </span>
+            <span className="text-[10px] text-text-muted">
+              {formatCost(monthlyWindow.used ?? 0)} / {formatCost(monthlyWindow.limit ?? 0)}
             </span>
           </div>
         </div>

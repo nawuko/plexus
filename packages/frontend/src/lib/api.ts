@@ -268,6 +268,8 @@ export interface Cooldown {
   accountId?: string | null;
   expiry: number;
   timeRemainingMs: number;
+  consecutiveFailures?: number;
+  lastError?: string;
 }
 
 // Backend Types

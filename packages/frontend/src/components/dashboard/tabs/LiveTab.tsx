@@ -1,5 +1,15 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Activity, AlertTriangle, Clock, Database, RefreshCw, Signal, X, Zap } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Activity,
+  AlertTriangle,
+  Clock,
+  Database,
+  Info,
+  RefreshCw,
+  Signal,
+  X,
+  Zap,
+} from 'lucide-react';
 import {
   AreaChart,
   Area,
@@ -125,6 +135,81 @@ const getModelLabel = (request: UsageRecord): string => {
   }
 
   return 'Unresolved Model';
+};
+
+interface CooldownRowProps {
+  provider: string;
+  modelDisplay: string;
+  minutes: number;
+  consecutiveFailures?: number;
+  lastError?: string;
+  expiryStr: string;
+}
+
+const CooldownRow: React.FC<CooldownRowProps> = ({
+  provider,
+  modelDisplay,
+  minutes,
+  consecutiveFailures,
+  lastError,
+  expiryStr,
+}) => {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  return (
+    <div className="px-3 py-2 flex items-center gap-2 bg-warning/5">
+      <AlertTriangle size={12} className="text-warning shrink-0" />
+      <span className="text-xs font-medium text-text">{provider}</span>
+      <span className="text-xs text-text-muted truncate">
+        {modelDisplay} — {minutes}m
+      </span>
+      <div className="relative ml-auto shrink-0" ref={ref}>
+        <button
+          onClick={() => setOpen((v) => !v)}
+          className="text-text-muted hover:text-text transition-colors"
+          aria-label="Show cooldown details"
+        >
+          <Info size={13} />
+        </button>
+        {open && (
+          <div className="absolute right-0 top-5 z-50 w-72 rounded-md border border-border shadow-lg p-3 text-xs space-y-2" style={{ backgroundColor: 'rgb(15, 23, 42)' }}>
+            <div className="flex items-center gap-1.5 font-semibold text-warning">
+              <AlertTriangle size={12} />
+              Cooldown Details
+            </div>
+            {lastError && (
+              <div>
+                <span className="text-text-muted font-medium">Error:</span>
+                <p className="mt-0.5 text-text wrap-break-word whitespace-pre-wrap font-mono text-[11px] bg-bg-hover rounded p-1.5 max-h-32 overflow-y-auto">
+                  {lastError}
+                </p>
+              </div>
+            )}
+            {consecutiveFailures !== undefined && (
+              <div className="flex justify-between">
+                <span className="text-text-muted">Consecutive failures</span>
+                <span className="font-semibold text-danger">{consecutiveFailures}</span>
+              </div>
+            )}
+            <div className="flex justify-between">
+              <span className="text-text-muted">Expires at</span>
+              <span className="font-semibold text-text">{expiryStr}</span>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 };
 
 export const LiveTab: React.FC<LiveTabProps> = ({ pollInterval, onPollIntervalChange }) => {
@@ -1160,18 +1245,23 @@ export const LiveTab: React.FC<LiveTabProps> = ({ pollInterval, onPollIntervalCh
               {Object.entries(groupedCooldowns).map(([key, modelCooldowns]) => {
                 const [provider, model] = key.split(':');
                 const maxTime = Math.max(...modelCooldowns.map((c) => c.timeRemainingMs));
+                const representative = modelCooldowns.reduce((a, b) =>
+                  a.timeRemainingMs >= b.timeRemainingMs ? a : b
+                );
                 const minutes = Math.ceil(maxTime / 60000);
                 const modelDisplay = model || 'all models';
+                const expiryDate = new Date(representative.expiry);
+                const expiryStr = expiryDate.toLocaleString();
                 return (
-                  <div key={key} className="px-3 py-2 flex items-center gap-2 bg-warning/5">
-                    <AlertTriangle size={12} className="text-warning shrink-0" />
-                    <span className="text-xs font-medium text-text">
-                      {normalizeTelemetryLabel(provider) || 'Unknown'}
-                    </span>
-                    <span className="text-xs text-text-muted truncate">
-                      {modelDisplay} — {minutes}m
-                    </span>
-                  </div>
+                  <CooldownRow
+                    key={key}
+                    provider={normalizeTelemetryLabel(provider) || 'Unknown'}
+                    modelDisplay={modelDisplay}
+                    minutes={minutes}
+                    consecutiveFailures={representative.consecutiveFailures}
+                    lastError={representative.lastError}
+                    expiryStr={expiryStr}
+                  />
                 );
               })}
             </div>

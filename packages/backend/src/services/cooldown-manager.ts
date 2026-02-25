@@ -11,6 +11,7 @@ interface Target {
 interface CooldownEntry {
   expiry: number;
   consecutiveFailures: number;
+  lastError?: string;
 }
 
 export class CooldownManager {
@@ -56,6 +57,7 @@ export class CooldownManager {
         this.cooldowns.set(key, {
           expiry: row.expiry,
           consecutiveFailures: row.consecutiveFailures || 0,
+          lastError: row.lastError ?? undefined,
         });
       }
       logger.info(`Loaded ${this.cooldowns.size} active cooldowns from storage`);
@@ -149,7 +151,8 @@ export class CooldownManager {
   public async markProviderFailure(
     provider: string,
     model: string,
-    durationMs?: number
+    durationMs?: number,
+    lastError?: string
   ): Promise<void> {
     if (this.isCooldownDisabledForProvider(provider)) {
       logger.debug(
@@ -166,7 +169,7 @@ export class CooldownManager {
     const duration = durationMs || this.calculateCooldownDuration(consecutiveFailures - 1);
     const expiry = Date.now() + duration;
 
-    this.cooldowns.set(key, { expiry, consecutiveFailures });
+    this.cooldowns.set(key, { expiry, consecutiveFailures, lastError });
 
     logger.warn(
       `Provider '${provider}' model '${model}' placed on cooldown for ${duration / 1000}s ` +
@@ -183,12 +186,14 @@ export class CooldownManager {
           expiry,
           consecutiveFailures,
           createdAt: Date.now(),
+          lastError: lastError ?? null,
         })
         .onConflictDoUpdate({
           target: [this.schema.providerCooldowns.provider, this.schema.providerCooldowns.model],
           set: {
             expiry,
             consecutiveFailures,
+            lastError: lastError ?? null,
           },
         });
     } catch (e) {
@@ -286,6 +291,7 @@ export class CooldownManager {
     expiry: number;
     timeRemainingMs: number;
     consecutiveFailures: number;
+    lastError?: string;
   }[] {
     const now = Date.now();
     let providerConfig: Record<string, any> = {};
@@ -310,6 +316,7 @@ export class CooldownManager {
           expiry: entry.expiry,
           timeRemainingMs: entry.expiry - now,
           consecutiveFailures: entry.consecutiveFailures,
+          lastError: entry.lastError,
         });
       }
     }
