@@ -966,23 +966,6 @@ export const LiveTab: React.FC<LiveTabProps> = ({ pollInterval, onPollIntervalCh
       <div className="mb-8 flex flex-wrap items-start justify-between gap-3">
         <div className="header-left">
           <h1 className="font-heading text-3xl font-bold text-text m-0 mb-2">Live Metrics</h1>
-          {cooldowns.length > 0 ? (
-            <Badge
-              status="warning"
-              secondaryText={`Last updated: ${timeAgo}`}
-              style={{ minWidth: '190px' }}
-            >
-              System Degraded
-            </Badge>
-          ) : (
-            <Badge
-              status="connected"
-              secondaryText={`Last updated: ${timeAgo}`}
-              style={{ minWidth: '190px' }}
-            >
-              System Online
-            </Badge>
-          )}
         </div>
 
         <Badge
