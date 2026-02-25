@@ -13,7 +13,6 @@ import {
 import { Router } from './router';
 import { TransformerFactory } from './transformer-factory';
 import { logger } from '../utils/logger';
-import { QUOTA_ERROR_PATTERNS } from '../utils/constants';
 import { CooldownManager } from './cooldown-manager';
 import { RouteResult } from './router';
 import { DebugManager } from './debug-manager';
@@ -147,9 +146,7 @@ export class Dispatcher {
 
             if (canRetry) {
               await this.recordAttemptMetric(route, request.requestId, false);
-              if (this.shouldTriggerCooldown(oauthError)) {
-                CooldownManager.getInstance().markProviderFailure(route.provider, route.model);
-              }
+              CooldownManager.getInstance().markProviderFailure(route.provider, route.model);
               logger.warn(
                 `Failover: retrying after OAuth error from ${route.provider}/${route.model}: ${oauthError.message}`
               );
@@ -250,23 +247,12 @@ export class Dispatcher {
       } catch (error: any) {
         lastError = error;
 
-        // Determine if we should trigger cooldown:
-        // - If error has routingContext (from handleProviderError), respect its cooldownTriggered flag
-        // - If error is from network/other issues, trigger cooldown unless it's a non-retryable status
-        const hasRoutingContext = !!error?.routingContext;
-        const statusCode = error?.routingContext?.statusCode;
-        const isNonRetryableClientError = statusCode === 413 || statusCode === 422;
+        // If the error came from handleProviderError, it already called markProviderFailure.
+        // Only call it here for network/transport errors that have no HTTP status code.
+        const isHttpError = error?.routingContext?.statusCode !== undefined;
 
-        let shouldTriggerCooldown = false;
-        if (hasRoutingContext) {
-          // Error from handleProviderError - use its decision
-          shouldTriggerCooldown = error.routingContext.cooldownTriggered === true;
-        } else {
-          // Network or other error - trigger cooldown unless it's a known non-retryable code
-          shouldTriggerCooldown = !isNonRetryableClientError;
-        }
-
-        if (shouldTriggerCooldown) {
+        if (!isHttpError) {
+          // Pure network/transport error — mark the provider as failed
           CooldownManager.getInstance().markProviderFailure(route.provider, route.model);
         }
         await this.recordAttemptMetric(route, request.requestId, false);
@@ -292,19 +278,6 @@ export class Dispatcher {
 
   private isRetryableStatus(statusCode: number, retryableStatusCodes: number[]): boolean {
     return retryableStatusCodes.includes(statusCode);
-  }
-
-  /**
-   * Determines if an error should trigger a provider cooldown.
-   * Non-retryable client errors (413, 422) should NOT trigger cooldown.
-   */
-  private shouldTriggerCooldown(error: any): boolean {
-    const statusCode = error?.routingContext?.statusCode || error?.status || error?.statusCode;
-    // Don't cooldown for non-retryable client errors
-    if (statusCode === 413 || statusCode === 422) {
-      return false;
-    }
-    return true;
   }
 
   /**
@@ -942,6 +915,34 @@ export class Dispatcher {
   /**
    * Handles failed provider responses with cooldown logic
    */
+  /**
+   * Detects whether an error response body indicates a quota/funds exhaustion error.
+   * These patterns should trigger a cooldown even on 400/403 responses.
+   */
+  private isQuotaExhaustedError(errorText: string): boolean {
+    const lower = errorText.toLowerCase();
+    return (
+      lower.includes('insufficient fund') ||
+      lower.includes('insufficient_quota') ||
+      lower.includes('insufficient balance') ||
+      lower.includes('insufficient_balance') ||
+      lower.includes('quota exceeded') ||
+      lower.includes('out of credits') ||
+      lower.includes('credit balance is too low') ||
+      lower.includes('credit_balance_too_low') ||
+      lower.includes('account is out of credits') ||
+      lower.includes('used up your points') ||
+      lower.includes('your credit balance') ||
+      lower.includes('remaining quota') ||
+      lower.includes('payment required') ||
+      lower.includes('billing') ||
+      lower.includes('no credits') ||
+      lower.includes('topup') ||
+      lower.includes('top up') ||
+      lower.includes('top_up')
+    );
+  }
+
   private async handleProviderError(
     response: Response,
     route: RouteResult,
@@ -954,30 +955,11 @@ export class Dispatcher {
 
     const cooldownManager = CooldownManager.getInstance();
 
-    // Check if this is a quota/balance-related 400 error
-    const errorTextLower = errorText.toLowerCase();
-    const isQuotaError400 =
-      response.status === 400 &&
-      QUOTA_ERROR_PATTERNS.some((pattern) => errorTextLower.includes(pattern.toLowerCase()));
+    // Trigger cooldown for all provider errors except 413 (payload too large) and 422
+    // (unprocessable entity), which indicate a bad request from the caller, not a provider failure.
+    const isCallerError = response.status === 413 || response.status === 422;
 
-    if (isQuotaError400) {
-      logger.warn(
-        `Detected quota/balance error in 400 response from ${route.provider}/${route.model}`
-      );
-    }
-
-    // Trigger cooldown for server errors (5xx) and specific client errors:
-    // - 400 Bad Request: Only if it's a quota/balance error (detected above)
-    // - 401 Unauthorized: Invalid or expired credentials
-    // - 402 Payment Required: Insufficient quota/credits
-    // - 403 Forbidden: Permission denied
-    // - 408 Request Timeout: Request took too long
-    // - 429 Too Many Requests: Rate limit exceeded
-    if (
-      response.status >= 500 ||
-      isQuotaError400 ||
-      [401, 402, 403, 408, 429].includes(response.status)
-    ) {
+    if (!isCallerError) {
       let cooldownDuration: number | undefined;
 
       // For 429 errors, try to parse provider-specific cooldown duration
@@ -1016,10 +998,7 @@ export class Dispatcher {
       headers: this.sanitizeHeaders(headers || {}),
       statusCode: response.status,
       providerResponse: errorText,
-      cooldownTriggered:
-        response.status >= 500 ||
-        isQuotaError400 ||
-        [401, 402, 403, 408, 429].includes(response.status),
+      cooldownTriggered: !isCallerError,
     };
 
     throw error;
@@ -1265,7 +1244,9 @@ export class Dispatcher {
         return enrichedResponse;
       } catch (error: any) {
         lastError = error;
-        if (this.shouldTriggerCooldown(error)) {
+        // handleProviderError already called markProviderFailure for HTTP errors.
+        // Only call it here for pure network/transport errors (no statusCode).
+        if (error?.routingContext?.statusCode === undefined) {
           CooldownManager.getInstance().markProviderFailure(route.provider, route.model);
         }
         await this.recordAttemptMetric(route, request.requestId, false);
@@ -1432,7 +1413,9 @@ export class Dispatcher {
         return unifiedResponse;
       } catch (error: any) {
         lastError = error;
-        if (this.shouldTriggerCooldown(error)) {
+        // handleProviderError already called markProviderFailure for HTTP errors.
+        // Only call it here for pure network/transport errors (no statusCode).
+        if (error?.routingContext?.statusCode === undefined) {
           CooldownManager.getInstance().markProviderFailure(route.provider, route.model);
         }
         await this.recordAttemptMetric(route, request.requestId, false);
@@ -1617,7 +1600,9 @@ export class Dispatcher {
         return unifiedResponse;
       } catch (error: any) {
         lastError = error;
-        if (this.shouldTriggerCooldown(error)) {
+        // handleProviderError already called markProviderFailure for HTTP errors.
+        // Only call it here for pure network/transport errors (no statusCode).
+        if (error?.routingContext?.statusCode === undefined) {
           CooldownManager.getInstance().markProviderFailure(route.provider, route.model);
         }
         await this.recordAttemptMetric(route, request.requestId, false);
@@ -1768,7 +1753,11 @@ export class Dispatcher {
         return unifiedResponse;
       } catch (error: any) {
         lastError = error;
-        CooldownManager.getInstance().markProviderFailure(route.provider, route.model);
+        // handleProviderError already called markProviderFailure for HTTP errors.
+        // Only call it here for pure network/transport errors (no statusCode).
+        if (error?.routingContext?.statusCode === undefined) {
+          CooldownManager.getInstance().markProviderFailure(route.provider, route.model);
+        }
         await this.recordAttemptMetric(route, request.requestId, false);
 
         const canRetryNetwork =
@@ -1915,7 +1904,11 @@ export class Dispatcher {
         return unifiedResponse;
       } catch (error: any) {
         lastError = error;
-        CooldownManager.getInstance().markProviderFailure(route.provider, route.model);
+        // handleProviderError already called markProviderFailure for HTTP errors.
+        // Only call it here for pure network/transport errors (no statusCode).
+        if (error?.routingContext?.statusCode === undefined) {
+          CooldownManager.getInstance().markProviderFailure(route.provider, route.model);
+        }
         await this.recordAttemptMetric(route, request.requestId, false);
 
         const canRetryNetwork =

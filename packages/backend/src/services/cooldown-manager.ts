@@ -205,10 +205,14 @@ export class CooldownManager {
       return;
     }
 
-    // Reset consecutive failures to 0
+    // Reset consecutive failures to 0 and remove the entry entirely
     this.cooldowns.delete(key);
 
-    logger.info(`Provider '${provider}' model '${model}' succeeded - resetting failure count`);
+    if (existingEntry.consecutiveFailures > 0) {
+      logger.info(
+        `Provider '${provider}' model '${model}' succeeded - resetting failure count (was ${existingEntry.consecutiveFailures})`
+      );
+    }
 
     try {
       const db = this.ensureDb();
@@ -230,8 +234,13 @@ export class CooldownManager {
     const entry = this.cooldowns.get(key);
     if (!entry) return true;
 
+    // expiry === 0 means cooldown already expired — provider is eligible but failure count is retained
+    if (entry.expiry === 0) return true;
+
     if (Date.now() > entry.expiry) {
-      this.cooldowns.delete(key);
+      // Cooldown just expired — keep the failure count so the next failure escalates correctly,
+      // but mark expiry as 0 so we stop treating it as actively cooling down.
+      this.cooldowns.set(key, { expiry: 0, consecutiveFailures: entry.consecutiveFailures });
 
       try {
         const db = this.ensureDb();
