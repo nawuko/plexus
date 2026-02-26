@@ -5,7 +5,11 @@ import { UsageRecord } from '../../types/usage';
 import { calculateCosts } from '../../utils/calculate-costs';
 import { DebugManager } from '../debug-manager';
 import { estimateTokensFromReconstructed, estimateInputTokens } from '../../utils/estimate-tokens';
-import { normalizeOpenAIChatUsage } from '../../utils/usage-normalizer';
+import {
+  normalizeGeminiUsage,
+  normalizeOpenAIChatUsage,
+  normalizeOpenAIResponsesUsage,
+} from '../../utils/usage-normalizer';
 import { estimateKwhUsed } from '../inference-energy';
 
 export class UsageInspector extends PassThrough {
@@ -16,6 +20,7 @@ export class UsageInspector extends PassThrough {
   private startTime: number;
   private shouldEstimateTokens: boolean;
   private apiType: string;
+  private incomingApiType: string;
   private originalRequest?: any;
   private firstChunk = true;
 
@@ -28,6 +33,7 @@ export class UsageInspector extends PassThrough {
     startTime: number,
     shouldEstimateTokens: boolean = false,
     apiType: string = 'chat',
+    incomingApiType?: string,
     originalRequest?: any
   ) {
     super();
@@ -38,6 +44,7 @@ export class UsageInspector extends PassThrough {
     this.startTime = startTime;
     this.shouldEstimateTokens = shouldEstimateTokens;
     this.apiType = apiType;
+    this.incomingApiType = incomingApiType || apiType;
     this.originalRequest = originalRequest;
   }
 
@@ -97,7 +104,7 @@ export class UsageInspector extends PassThrough {
         }
 
         if (this.originalRequest && stats.inputTokens === 0) {
-          stats.inputTokens = estimateInputTokens(this.originalRequest, this.apiType);
+          stats.inputTokens = estimateInputTokens(this.originalRequest, this.incomingApiType);
         }
 
         this.usageRecord.tokensInput = stats.inputTokens;
@@ -184,15 +191,17 @@ export class UsageInspector extends PassThrough {
           };
         }
       case 'responses':
-        return reconstructed.usage
-          ? {
-              inputTokens: reconstructed.usage.input_tokens || 0,
-              outputTokens: reconstructed.usage.output_tokens || 0,
-              cachedTokens: reconstructed.usage.input_tokens_details?.cached_tokens || 0,
-              cacheWriteTokens: 0,
-              reasoningTokens: reconstructed.usage.output_tokens_details?.reasoning_tokens || 0,
-            }
-          : null;
+        if (!reconstructed.usage) return null;
+        {
+          const usage = normalizeOpenAIResponsesUsage(reconstructed.usage);
+          return {
+            inputTokens: usage.input_tokens,
+            outputTokens: usage.output_tokens,
+            cachedTokens: usage.cached_tokens,
+            cacheWriteTokens: usage.cache_creation_tokens,
+            reasoningTokens: usage.reasoning_tokens,
+          };
+        }
       case 'messages':
         return reconstructed.usage
           ? {
@@ -204,15 +213,17 @@ export class UsageInspector extends PassThrough {
             }
           : null;
       case 'gemini':
-        return reconstructed.usageMetadata
-          ? {
-              inputTokens: reconstructed.usageMetadata.promptTokenCount || 0,
-              outputTokens: reconstructed.usageMetadata.candidatesTokenCount || 0,
-              cachedTokens: reconstructed.usageMetadata.cachedContentTokenCount || 0,
-              cacheWriteTokens: 0,
-              reasoningTokens: 0,
-            }
-          : null;
+        if (!reconstructed.usageMetadata) return null;
+        {
+          const usage = normalizeGeminiUsage(reconstructed.usageMetadata);
+          return {
+            inputTokens: usage.input_tokens,
+            outputTokens: usage.output_tokens,
+            cachedTokens: usage.cached_tokens,
+            cacheWriteTokens: usage.cache_creation_tokens,
+            reasoningTokens: usage.reasoning_tokens,
+          };
+        }
       case 'oauth':
         return reconstructed.usage
           ? {

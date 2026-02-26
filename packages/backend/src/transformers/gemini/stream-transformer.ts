@@ -1,6 +1,7 @@
 import { createParser, EventSourceMessage } from 'eventsource-parser';
 import { logger } from '../../utils/logger';
 import type { StreamBlockEventType } from '../../types/unified';
+import { normalizeGeminiUsage } from '../../utils/usage-normalizer';
 
 /**
  * Transforms a Gemini stream (Server-Sent Events) into unified stream format.
@@ -63,6 +64,7 @@ export function transformGeminiStream(stream: ReadableStream): ReadableStream {
 
             // If we have usage but no candidate, it's a usage-only chunk (common in Gemini 1.5+)
             if (!candidate && data.usageMetadata) {
+              const usage = normalizeGeminiUsage(data.usageMetadata);
               const chunk = {
                 id: data.responseId,
                 model: data.modelVersion,
@@ -70,13 +72,11 @@ export function transformGeminiStream(stream: ReadableStream): ReadableStream {
                 event: 'usage' as StreamBlockEventType,
                 delta: {},
                 usage: {
-                  input_tokens:
-                    data.usageMetadata.promptTokenCount -
-                    (data.usageMetadata.cachedContentTokenCount || 0),
-                  output_tokens: data.usageMetadata.candidatesTokenCount,
-                  total_tokens: data.usageMetadata.totalTokenCount,
-                  reasoning_tokens: data.usageMetadata.thoughtsTokenCount,
-                  cached_tokens: data.usageMetadata.cachedContentTokenCount,
+                  input_tokens: usage.input_tokens,
+                  output_tokens: usage.output_tokens,
+                  total_tokens: usage.total_tokens,
+                  reasoning_tokens: usage.reasoning_tokens,
+                  cached_tokens: usage.cached_tokens,
                 },
               };
               logger.silly(`Gemini Transformer: Enqueueing unified chunk (usage)`, chunk);
@@ -256,38 +256,19 @@ export function transformGeminiStream(stream: ReadableStream): ReadableStream {
                 created: Date.now(),
                 finish_reason: finishReason,
                 usage: data.usageMetadata
-                  ? {
-                      input_tokens:
-                        data.usageMetadata.promptTokenCount -
-                        (data.usageMetadata.cachedContentTokenCount || 0),
-                      output_tokens: data.usageMetadata.candidatesTokenCount,
-                      total_tokens: data.usageMetadata.totalTokenCount,
-                      reasoning_tokens: data.usageMetadata.thoughtsTokenCount,
-                      cached_tokens: data.usageMetadata.cachedContentTokenCount,
-                    }
+                  ? (() => {
+                      const usage = normalizeGeminiUsage(data.usageMetadata);
+                      return {
+                        input_tokens: usage.input_tokens,
+                        output_tokens: usage.output_tokens,
+                        total_tokens: usage.total_tokens,
+                        reasoning_tokens: usage.reasoning_tokens,
+                        cached_tokens: usage.cached_tokens,
+                      };
+                    })()
                   : undefined,
               };
               logger.silly(`Gemini Transformer: Enqueueing unified chunk (finish)`, chunk);
-              controller.enqueue(chunk);
-            }
-
-            // Handle usage-only chunks (Gemini 1.5+)
-            if (!candidate && data.usageMetadata) {
-              const chunk = {
-                id: data.responseId,
-                model: data.modelVersion,
-                created: Date.now(),
-                event: 'usage' as StreamBlockEventType,
-                delta: {},
-                usage: {
-                  input_tokens: data.usageMetadata.promptTokenCount,
-                  output_tokens: data.usageMetadata.candidatesTokenCount,
-                  total_tokens: data.usageMetadata.totalTokenCount,
-                  reasoning_tokens: data.usageMetadata.thoughtsTokenCount,
-                  cached_tokens: data.usageMetadata.cachedContentTokenCount,
-                },
-              };
-              logger.silly(`Gemini Transformer: Enqueueing unified chunk (usage)`, chunk);
               controller.enqueue(chunk);
             }
           } catch (e) {

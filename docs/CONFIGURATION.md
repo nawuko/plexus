@@ -812,3 +812,5 @@ providers:
 Estimated counts are typically within ±15% of actual values and are flagged with `tokensEstimated = 1` in the usage database. Estimation can also be enabled per-provider in the Admin UI under **Advanced → Estimate Tokens**.
 
 → See [Token Estimation Guide](TOKEN_ESTIMATION.md) for algorithm details, accuracy characteristics, performance impact, and database schema.
+
+→ See [Token Accounting Guide](TOKEN_ACCOUNTING.md) for provider-specific usage field semantics and Plexus normalization rules.

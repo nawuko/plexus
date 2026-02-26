@@ -1,6 +1,7 @@
 import { UnifiedChatResponse } from '../../types/unified';
 import { logger } from '../../utils/logger';
 import { isValidThoughtSignature } from './utils';
+import { normalizeGeminiUsage } from '../../utils/usage-normalizer';
 
 /**
  * Transforms a Gemini API response into unified format.
@@ -48,18 +49,7 @@ export async function transformGeminiResponse(response: any): Promise<UnifiedCha
     }
   });
 
-  const usage = response.usageMetadata
-    ? {
-        input_tokens:
-          response.usageMetadata.promptTokenCount -
-          (response.usageMetadata.cachedContentTokenCount || 0),
-        output_tokens: response.usageMetadata.candidatesTokenCount,
-        total_tokens: response.usageMetadata.totalTokenCount,
-        reasoning_tokens: response.usageMetadata.thoughtsTokenCount,
-        cached_tokens: response.usageMetadata.cachedContentTokenCount,
-        cache_creation_tokens: 0,
-      }
-    : undefined;
+  const usage = response.usageMetadata ? normalizeGeminiUsage(response.usageMetadata) : undefined;
 
   return {
     id: response.responseId || 'gemini-' + Date.now(),
