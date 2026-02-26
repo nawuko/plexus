@@ -107,7 +107,7 @@ export class OAuthTransformer implements Transformer {
   async transformRequest(request: UnifiedChatRequest): Promise<any> {
     const context = unifiedToContext(request);
     const options: Record<string, any> = {};
-    const clientHeaders = request.metadata?.clientHeaders;
+    const clientHeaders = (request.metadata as any)?.plexus_metadata?.clientHeaders;
     if (clientHeaders && typeof clientHeaders === 'object') {
       options.clientHeaders = clientHeaders;
     }

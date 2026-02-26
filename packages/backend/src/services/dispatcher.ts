@@ -539,7 +539,8 @@ export class Dispatcher {
   }
 
   private getApiMetadata(metadata: Record<string, any>): Record<string, any> {
-    return metadata || {};
+    const { plexus_metadata: _stripped, ...apiMetadata } = metadata || {};
+    return apiMetadata;
   }
 
   /**

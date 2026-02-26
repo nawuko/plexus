@@ -53,8 +53,11 @@ export async function registerMessagesRoute(
       if (typeof xAppHeader === 'string' && xAppHeader.trim()) {
         unifiedRequest.metadata = {
           ...(unifiedRequest.metadata || {}),
-          clientHeaders: {
-            'x-app': xAppHeader,
+          plexus_metadata: {
+            ...((unifiedRequest.metadata as any)?.plexus_metadata || {}),
+            clientHeaders: {
+              'x-app': xAppHeader,
+            },
           },
         };
       }
