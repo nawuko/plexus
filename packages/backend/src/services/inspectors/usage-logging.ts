@@ -123,18 +123,34 @@ export class UsageInspector extends PassThrough {
       // Estimate energy consumption
       this.usageRecord.kwhUsed = estimateKwhUsed(stats.inputTokens, stats.outputTokens);
 
-      this.usageStorage.saveRequest(this.usageRecord as UsageRecord);
+      // Fire-and-forget: saveRequest is async but _flush is synchronous
+      // Attach error handler to prevent unhandled promise rejections
+      this.usageStorage.saveRequest(this.usageRecord as UsageRecord).catch((err) => {
+        logger.error(
+          `[Inspector:Usage] Failed to save usage record for ${this.usageRecord.requestId}:`,
+          err
+        );
+      });
 
       if (this.usageRecord.provider && this.usageRecord.selectedModelName) {
-        this.usageStorage.updatePerformanceMetrics(
-          this.usageRecord.provider,
-          this.usageRecord.selectedModelName,
-          this.usageRecord.canonicalModelName ?? null,
-          this.usageRecord.ttftMs || null,
-          stats.outputTokens > 0 ? stats.outputTokens : null,
-          this.usageRecord.durationMs,
-          this.usageRecord.requestId!
-        );
+        // Fire-and-forget: updatePerformanceMetrics is async but _flush is synchronous
+        // Attach error handler to prevent unhandled promise rejections
+        this.usageStorage
+          .updatePerformanceMetrics(
+            this.usageRecord.provider,
+            this.usageRecord.selectedModelName,
+            this.usageRecord.canonicalModelName ?? null,
+            this.usageRecord.ttftMs || null,
+            stats.outputTokens > 0 ? stats.outputTokens : null,
+            this.usageRecord.durationMs,
+            this.usageRecord.requestId!
+          )
+          .catch((err) => {
+            logger.error(
+              `[Inspector:Usage] Failed to update performance metrics for ${this.usageRecord.requestId}:`,
+              err
+            );
+          });
       }
 
       logger.debug(
