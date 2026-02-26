@@ -120,6 +120,8 @@ export async function registerGeminiRoute(
 
       usageStorage.saveError(requestId, e, errorDetails);
 
+      DebugManager.getInstance().flush(requestId);
+
       logger.error('Error processing Gemini request', e);
       const statusCode = e.routingContext?.statusCode || 500;
       return reply.code(statusCode).send({

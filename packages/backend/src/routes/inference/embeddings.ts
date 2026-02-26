@@ -85,6 +85,7 @@ export async function registerEmbeddingsRoute(
       };
 
       usageStorage.saveError(requestId, e, errorDetails);
+      DebugManager.getInstance().flush(requestId);
       logger.error('Error processing embeddings request', e);
 
       return reply.code(500).send({

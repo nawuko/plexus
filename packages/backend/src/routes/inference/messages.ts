@@ -110,6 +110,8 @@ export async function registerMessagesRoute(
 
       usageStorage.saveError(requestId, e, errorDetails);
 
+      DebugManager.getInstance().flush(requestId);
+
       logger.error('Error processing Anthropic request', e);
       const statusCode = e.routingContext?.statusCode || 500;
       const errorType = statusCode === 401 ? 'authentication_error' : 'api_error';

@@ -197,6 +197,8 @@ export async function registerResponsesRoute(
 
       usageStorage.saveError(requestId, e, errorDetails);
 
+      DebugManager.getInstance().flush(requestId);
+
       logger.error('Error processing Responses API request', e);
 
       const statusCode = e.routingContext?.statusCode || 500;

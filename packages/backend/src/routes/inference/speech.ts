@@ -127,6 +127,7 @@ export async function registerSpeechRoute(
       };
 
       usageStorage.saveError(requestId, e, errorDetails);
+      DebugManager.getInstance().flush(requestId);
       logger.error('Error processing speech request', e);
 
       return reply.code(500).send({

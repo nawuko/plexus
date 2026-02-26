@@ -105,6 +105,7 @@ export async function registerImagesRoute(
       };
 
       usageStorage.saveError(requestId, e, errorDetails);
+      DebugManager.getInstance().flush(requestId);
       logger.error('Error processing image generation request', e);
 
       return reply.code(500).send({
@@ -250,6 +251,7 @@ export async function registerImagesRoute(
       };
 
       usageStorage.saveError(requestId, e, errorDetails);
+      DebugManager.getInstance().flush(requestId);
       logger.error('Error processing image edit request', e);
 
       return reply.code(500).send({

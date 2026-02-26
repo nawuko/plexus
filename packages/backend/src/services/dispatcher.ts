@@ -184,7 +184,15 @@ export class Dispatcher {
             this.isRetryableStatus(response.status, failover?.retryableStatusCodes || []);
 
           try {
-            await this.handleProviderError(response, route, errorText, url, headers, targetApiType);
+            await this.handleProviderError(
+              response,
+              route,
+              errorText,
+              url,
+              headers,
+              targetApiType,
+              request.requestId
+            );
           } catch (e: any) {
             lastError = e;
 
@@ -982,7 +990,8 @@ export class Dispatcher {
     errorText: string,
     url?: string,
     headers?: Record<string, string>,
-    targetApiType?: string
+    targetApiType?: string,
+    requestId?: string
   ): Promise<never> {
     logger.error(`Provider error: ${response.status} ${errorText}`);
 
@@ -1054,6 +1063,11 @@ export class Dispatcher {
       providerResponse: errorText,
       cooldownTriggered: !isCallerError,
     };
+
+    // Capture the raw error response for debug logs
+    if (requestId) {
+      DebugManager.getInstance().addRawResponse(requestId, errorText);
+    }
 
     throw error;
   }
@@ -1259,7 +1273,15 @@ export class Dispatcher {
             this.isRetryableStatus(response.status, failover?.retryableStatusCodes || []);
 
           try {
-            await this.handleProviderError(response, route, errorText, url, headers, 'embeddings');
+            await this.handleProviderError(
+              response,
+              route,
+              errorText,
+              url,
+              headers,
+              'embeddings',
+              request.requestId
+            );
           } catch (e: any) {
             lastError = e;
             if (canRetry) {
@@ -1439,7 +1461,8 @@ export class Dispatcher {
               errorText,
               url,
               headers,
-              'transcriptions'
+              'transcriptions',
+              request.requestId
             );
           } catch (e: any) {
             lastError = e;
@@ -1620,7 +1643,15 @@ export class Dispatcher {
             this.isRetryableStatus(response.status, failover?.retryableStatusCodes || []);
 
           try {
-            await this.handleProviderError(response, route, errorText, url, headers, 'speech');
+            await this.handleProviderError(
+              response,
+              route,
+              errorText,
+              url,
+              headers,
+              'speech',
+              request.requestId
+            );
           } catch (e: any) {
             lastError = e;
             if (canRetry) {
@@ -1833,7 +1864,15 @@ export class Dispatcher {
             this.isRetryableStatus(response.status, failover?.retryableStatusCodes || []);
 
           try {
-            await this.handleProviderError(response, route, errorText, url, headers, 'images');
+            await this.handleProviderError(
+              response,
+              route,
+              errorText,
+              url,
+              headers,
+              'images',
+              request.requestId
+            );
           } catch (e: any) {
             lastError = e;
             if (canRetry) {
@@ -2003,7 +2042,15 @@ export class Dispatcher {
             this.isRetryableStatus(response.status, failover?.retryableStatusCodes || []);
 
           try {
-            await this.handleProviderError(response, route, errorText, url, headers, 'images');
+            await this.handleProviderError(
+              response,
+              route,
+              errorText,
+              url,
+              headers,
+              'images',
+              request.requestId
+            );
           } catch (e: any) {
             lastError = e;
             if (canRetry) {

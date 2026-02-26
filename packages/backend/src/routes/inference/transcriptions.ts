@@ -175,6 +175,7 @@ export async function registerTranscriptionsRoute(
       };
 
       usageStorage.saveError(requestId, e, errorDetails);
+      DebugManager.getInstance().flush(requestId);
       logger.error('Error processing transcription request', e);
 
       return reply.code(500).send({
