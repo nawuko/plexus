@@ -1,5 +1,30 @@
 # Changelog
 
+## v0.17.8 - 2026-02-27
+
+### v0.17.8: Gemini Stream Optimization, Token Accounting, and Anthropic Header Isolation
+
+### Main Features
+
+- **Enhanced Gemini Integration**: Significant improvements to Gemini support, including thought signature handling, `systemInstruction` support in the OAuthTransformer, and improved toolcall handling for stream formatters. ([f8d9837](https://github.com/mcowger/plexus/commit/f8d9837), [80d14ca](https://github.com/mcowger/plexus/commit/80d14ca), [55e74ce](https://github.com/mcowger/plexus/commit/55e74ce))
+- **Advanced Token Accounting**: Implemented detailed token estimation and normalization for both Gemini and OpenAI APIs, including support for cached tokens and usage-only chunks in streaming responses. ([e7634ea](https://github.com/mcowger/plexus/commit/e7634ea), [895ef74](https://github.com/mcowger/plexus/commit/895ef74), [f402689](https://github.com/mcowger/plexus/commit/f402689), [88fdd53](https://github.com/mcowger/plexus/commit/88fdd53))
+- **Gemini Quota Management**: Added a new CLI quota checker and related components for monitoring and managing Gemini API quotas. ([742954e](https://github.com/mcowger/plexus/commit/742954e), [7da1fde](https://github.com/mcowger/plexus/commit/7da1fde))
+- **Request Lifecycle Observability**: Introduced event emission for the request lifecycle within usage storage and expanded metadata handling to include `plexus_metadata` across client headers. ([388ee8b](https://github.com/mcowger/plexus/commit/388ee8b), [bd9c11b](https://github.com/mcowger/plexus/commit/bd9c11b))
+
+### Smaller Changes
+
+- **Fix**: Prevented Claude Code billing headers from leaking into all Anthropic translation-path requests. ([c422cce](https://github.com/mcowger/plexus/commit/c422cce))
+- **Fix**: Forced the correct GitHub Copilot endpoint for business accounts in OAuth configurations. ([6c14914](https://github.com/mcowger/plexus/commit/6c14914))
+- **Refactor**: Improved the Models component UI using custom hooks and standardized `AliasTableRow` for better maintainability. ([e7634ea](https://github.com/mcowger/plexus/commit/e7634ea))
+- **Logging**: Enhanced error logging by flushing the debug manager and capturing raw responses in the Dispatcher. ([a6fa855](https://github.com/mcowger/plexus/commit/a6fa855))
+- **Infrastructure**: Updated Bun and Bun-types dependencies to version 1.3.10. ([96298bf](https://github.com/mcowger/plexus/commit/96298bf))
+- **Logic**: Added input normalization helpers for standardized response formats and refined tool filtering by function declaration. ([c77c70b](https://github.com/mcowger/plexus/commit/c77c70b), [5a292ed](https://github.com/mcowger/plexus/commit/5a292ed))
+- **Housekeeping**: Removed deprecated `.vscode/mcp.json` and updated `.gitignore`. ([38040c8](https://github.com/mcowger/plexus/commit/38040c8), [17cba04](https://github.com/mcowger/plexus/commit/17cba04))
+- **OAuth**: Enhanced error handling in the OAuth transformer with added regression tests. ([9e25125](https://github.com/mcowger/plexus/commit/9e25125))
+- **Storage**: Added error handling for asynchronous usage logging operations. ([d3d1210](https://github.com/mcowger/plexus/commit/d3d1210))
+
+The docker image has been updated and can be found at ghcr.io/mcowger/plexus:latest
+
 ## v0.17.7 - 2026-02-26
 
 ### v0.17.7: JSON Schema Normalization, Enhanced Gemini Support, and Authentication Updates
