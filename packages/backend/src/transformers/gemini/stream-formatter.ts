@@ -164,7 +164,7 @@ export function formatGeminiStream(stream: ReadableStream): ReadableStream {
         const geminiChunk: any = {
           candidates: [
             {
-              content: { role: 'model', parts },
+              content: { role: 'model', parts: parts.length > 0 ? parts : [{ text: '' }] },
               finishReason: chunk.finish_reason?.toUpperCase() || null,
               index: 0,
             },
