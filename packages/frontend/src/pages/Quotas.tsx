@@ -128,12 +128,16 @@ export const Quotas = () => {
       };
     }
 
-    // Get unique window types (in case of duplicates, take the most recent)
+    // Get unique windows (in case of duplicates, take the most recent)
+    // Key on windowType+description to support checkers with multiple windows of the same type
     const windowsByType = new Map<string, (typeof quota.latest)[0]>();
     for (const snapshot of quota.latest) {
-      const existing = windowsByType.get(snapshot.windowType);
+      const key = snapshot.description
+        ? `${snapshot.windowType}:${snapshot.description}`
+        : snapshot.windowType;
+      const existing = windowsByType.get(key);
       if (!existing || snapshot.checkedAt > existing.checkedAt) {
-        windowsByType.set(snapshot.windowType, snapshot);
+        windowsByType.set(key, snapshot);
       }
     }
 

@@ -2,7 +2,6 @@ import React from 'react';
 import { clsx } from 'clsx';
 import { AlertTriangle, CheckCircle2, TrendingUp } from 'lucide-react';
 import type { QuotaCheckResult } from '../../types/quota';
-import { QuotaProgressBar } from './QuotaProgressBar';
 
 interface AntigravityQuotaDisplayProps {
   result: QuotaCheckResult;
@@ -27,10 +26,14 @@ export const AntigravityQuotaDisplay: React.FC<AntigravityQuotaDisplayProps> = (
   }
 
   const windows = result.windows || [];
-  const primaryWindow = windows[0];
+
+  const worstStatus = windows.reduce<string>((worst, w) => {
+    const order = ['ok', 'warning', 'critical', 'exhausted'];
+    return order.indexOf(w.status ?? 'ok') > order.indexOf(worst) ? (w.status ?? 'ok') : worst;
+  }, 'ok');
 
   if (isCollapsed) {
-    const status = primaryWindow?.status || 'ok';
+    const status = worstStatus;
     return (
       <div className="px-2 py-2 flex justify-center">
         {status === 'ok' ? (
@@ -55,21 +58,42 @@ export const AntigravityQuotaDisplay: React.FC<AntigravityQuotaDisplayProps> = (
   }
 
   return (
-    <div className="px-2 py-1 space-y-3">
-      {windows.map((window, index) => (
-        <QuotaProgressBar
-          key={index}
-          label={window.windowLabel || `Window ${index + 1}`}
-          value={window.used ?? 0}
-          max={window.limit ?? 100}
-          status={window.status}
-          displayValue={
-            window.unit === 'percentage'
-              ? `${Math.round(window.utilizationPercent ?? 0)}%`
-              : undefined
-          }
-        />
-      ))}
+    <div className="px-2 py-1 grid grid-cols-3 gap-x-3 gap-y-2">
+      {windows.map((window, index) => {
+        const label = window.description || window.windowLabel || `Window ${index + 1}`;
+        const pct = Math.round(window.utilizationPercent ?? 0);
+        const barColor =
+          window.status === 'exhausted' || window.status === 'critical'
+            ? 'bg-danger'
+            : window.status === 'warning'
+              ? 'bg-warning'
+              : 'bg-success';
+        const textColor =
+          window.status === 'exhausted' || window.status === 'critical'
+            ? 'text-danger'
+            : window.status === 'warning'
+              ? 'text-warning'
+              : 'text-success';
+        return (
+          <div key={index} className="flex flex-col gap-0.5 min-w-0">
+            <div className="flex items-baseline justify-between gap-1 min-w-0">
+              <span
+                className="text-[10px] text-text-secondary font-medium truncate leading-tight"
+                title={label}
+              >
+                {label}
+              </span>
+              <span className={clsx('text-[10px] font-semibold shrink-0', textColor)}>{pct}%</span>
+            </div>
+            <div className="h-1 w-full bg-bg-hover rounded-full overflow-hidden">
+              <div
+                className={clsx('h-full rounded-full transition-all duration-500', barColor)}
+                style={{ width: `${Math.min(100, Math.max(0, pct))}%` }}
+              />
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 };

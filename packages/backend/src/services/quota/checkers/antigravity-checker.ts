@@ -92,22 +92,47 @@ export class AntigravityQuotaChecker extends QuotaChecker {
   ): Promise<{ data?: CloudCodeQuotaResponse; status?: number }> {
     try {
       const payload = projectId ? { project: projectId } : {};
-      logger.debug(
-        `[antigravity-checker] Fetching models from ${endpoint}/v1internal:fetchAvailableModels`
+      const url = `${endpoint}/v1internal:fetchAvailableModels`;
+
+      const headers: Record<string, string> = {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        ...ANTIGRAVITY_HEADERS,
+      };
+
+      const redactedToken =
+        token.length > 10
+          ? `${token.substring(0, 6)}...${token.substring(token.length - 4)}`
+          : '***';
+
+      logger.debug(`[antigravity-checker] Requesting quota from ${url}`);
+      logger.silly(
+        `[antigravity-checker] Headers: ${JSON.stringify({
+          ...headers,
+          Authorization: `Bearer ${redactedToken}`,
+        })}`
       );
-      const response = await fetch(`${endpoint}/v1internal:fetchAvailableModels`, {
+      logger.silly(`[antigravity-checker] Payload: ${JSON.stringify(payload)}`);
+
+      const response = await fetch(url, {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-          ...ANTIGRAVITY_HEADERS,
-        },
+        headers,
         body: JSON.stringify(payload),
       });
-      if (!response.ok) return { status: response.status };
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => 'no error body');
+        logger.warn(
+          `[antigravity-checker] Request failed with status ${response.status}: ${errorText}`
+        );
+        return { status: response.status };
+      }
+
       const data = (await response.json()) as CloudCodeQuotaResponse;
+      logger.silly(`[antigravity-checker] Response: ${JSON.stringify(data).substring(0, 1000)}...`);
       return { data };
-    } catch {
+    } catch (error: any) {
+      logger.error(`[antigravity-checker] Fetch error: ${error.message}`);
       return {};
     }
   }
@@ -118,9 +143,17 @@ export class AntigravityQuotaChecker extends QuotaChecker {
       // Support JSON-encoded { token, projectId } from pi-ai style api key
       if (configuredApiKey.startsWith('{')) {
         try {
-          const parsed = JSON.parse(configuredApiKey) as { token?: string; projectId?: string };
-          if (parsed.token) {
-            return { token: parsed.token, projectId: parsed.projectId };
+          const parsed = JSON.parse(configuredApiKey) as {
+            token?: string;
+            accessToken?: string;
+            access?: string;
+            key?: string;
+            projectId?: string;
+            project?: string;
+          };
+          const token = parsed.token || parsed.accessToken || parsed.access || parsed.key;
+          if (token) {
+            return { token, projectId: parsed.projectId || parsed.project };
           }
         } catch {
           // not JSON
@@ -153,12 +186,35 @@ export class AntigravityQuotaChecker extends QuotaChecker {
     const credentials = authManager.getCredentials(
       provider as OAuthProvider,
       oauthAccountId || null
-    );
-    const projectId = (credentials as unknown as Record<string, unknown>)?.projectId as
-      | string
-      | undefined;
+    ) as any;
 
-    return { token: apiKeyResult, projectId };
+    let token =
+      apiKeyResult ||
+      credentials?.access ||
+      credentials?.accessToken ||
+      credentials?.token ||
+      credentials?.key;
+    let projectId = credentials?.projectId || credentials?.project;
+
+    // If the token itself is a JSON string (common for pi-ai providers that bundle project info), parse it
+    if (typeof token === 'string' && token.trim().startsWith('{')) {
+      try {
+        const parsed = JSON.parse(token);
+        const extractedToken = parsed.token || parsed.accessToken || parsed.access || parsed.key;
+        if (extractedToken) {
+          token = extractedToken;
+          projectId = projectId || parsed.projectId || parsed.project;
+        }
+      } catch (e) {
+        logger.silly(`[antigravity-checker] Failed to parse token as JSON: ${e}`);
+      }
+    }
+
+    if (!token) {
+      throw new Error(`[antigravity-checker] No token found for provider '${provider}'`);
+    }
+
+    return { token, projectId };
   }
 
   private parseResetTime(value?: string): Date | undefined {
