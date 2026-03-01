@@ -1,7 +1,7 @@
 import React from 'react';
 import { clsx } from 'clsx';
 import { Github, AlertTriangle, CheckCircle2 } from 'lucide-react';
-import { formatDuration } from '../../lib/format';
+import { formatDuration, formatNumber } from '../../lib/format';
 import type { QuotaCheckResult, QuotaStatus } from '../../types/quota';
 
 interface CopilotQuotaDisplayProps {
@@ -90,6 +90,13 @@ export const CopilotQuotaDisplay: React.FC<CopilotQuotaDisplayProps> = ({
               {Math.round(monthlyWindow.utilizationPercent)}%
             </div>
           </div>
+          {monthlyWindow.used !== undefined &&
+            monthlyWindow.limit !== undefined &&
+            monthlyWindow.unit === 'requests' && (
+              <div className="text-[10px] text-text-muted">
+                {formatNumber(monthlyWindow.used)} / {formatNumber(monthlyWindow.limit)} requests
+              </div>
+            )}
         </div>
       )}
     </div>
