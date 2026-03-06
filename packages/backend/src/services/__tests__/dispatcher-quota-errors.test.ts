@@ -258,6 +258,9 @@ describe('Dispatcher Quota Error Detection', () => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
     }
 
+    const isP1Healthy = await CooldownManager.getInstance().isProviderHealthy('p1', 'model-1');
+    expect(isP1Healthy).toBe(false);
+
     // Cooldown should be set
     const isHealthy = await CooldownManager.getInstance().isProviderHealthy('p1', 'model-1');
     expect(isHealthy).toBe(false);
@@ -275,6 +278,51 @@ describe('Dispatcher Quota Error Detection', () => {
     expect(meta2?.finalAttemptProvider).toBe('p2');
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(String((fetchMock as any).mock.calls[0]?.[0])).toContain('p2.example.com');
+  });
+
+  test('wrapOAuthError classifies pi-ai codex usage limit errors and preserves cooldown duration', async () => {
+    setConfigForTesting(makeConfig({ targetCount: 1 }));
+
+    const dispatcher = new Dispatcher();
+    const route = {
+      provider: 'p1',
+      model: 'model-1',
+      config: {
+        api_base_url: 'oauth://openai-codex',
+        oauth_provider: 'openai-codex',
+      },
+    } as any;
+
+    const piAiResponse = {
+      type: 'error',
+      reason: 'error',
+      error: {
+        api: 'openai-codex-responses',
+        provider: 'openai-codex',
+        model: 'gpt-5.4',
+        errorMessage: 'You have hit your ChatGPT usage limit (free plan). Try again in ~9725 min.',
+      },
+    };
+
+    const upstreamError = new Error(piAiResponse.error.errorMessage) as Error & {
+      piAiResponse?: unknown;
+    };
+    upstreamError.piAiResponse = piAiResponse;
+
+    const wrapped = (dispatcher as any).wrapOAuthError(upstreamError, route, 'oauth');
+
+    expect(wrapped.routingContext.statusCode).toBe(429);
+    expect(wrapped.routingContext.cooldownTriggered).toBe(true);
+    expect(wrapped.routingContext.cooldownDuration).toBe(9725 * 60 * 1000);
+    expect(wrapped.routingContext.providerResponse).toContain('Try again in ~9725 min');
+
+    await (dispatcher as any).markOAuthProviderFailure(route, wrapped);
+
+    const cooldowns = CooldownManager.getInstance().getCooldowns();
+    expect(cooldowns).toHaveLength(1);
+    expect(cooldowns[0]?.provider).toBe('p1');
+    expect(cooldowns[0]?.model).toBe('model-1');
+    expect(cooldowns[0]?.timeRemainingMs).toBeGreaterThan(9724 * 60 * 1000);
   });
 
   test('all quota error patterns are correctly detected', () => {

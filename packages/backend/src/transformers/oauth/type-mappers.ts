@@ -471,16 +471,22 @@ export function piAiEventToChunk(
   }
 }
 
-function extractPiAiErrorMessage(error: any): string | undefined {
+export function extractPiAiErrorMessage(error: any): string | undefined {
   if (!error) return undefined;
   if (typeof error === 'string') return error;
   if (typeof error.message === 'string' && error.message.trim()) return error.message;
+  if (typeof error.errorMessage === 'string' && error.errorMessage.trim()) {
+    return error.errorMessage;
+  }
   if (typeof error.error === 'string' && error.error.trim()) return error.error;
 
   // Some providers nest error details under an `error` object.
   if (typeof error.error === 'object' && error.error) {
     if (typeof error.error.message === 'string' && error.error.message.trim()) {
       return error.error.message;
+    }
+    if (typeof error.error.errorMessage === 'string' && error.error.errorMessage.trim()) {
+      return error.error.errorMessage;
     }
   }
 

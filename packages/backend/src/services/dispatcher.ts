@@ -216,18 +216,14 @@ export class Dispatcher {
                 isVisionFallthrough: (currentRequest as any)._hasVisionFallthrough,
                 isDescriptorRequest: (currentRequest as any)._isVisionDescriptorRequest,
               });
-              CooldownManager.getInstance().markProviderFailure(
-                route.provider,
-                route.model,
-                undefined,
-                oauthError.message
-              );
+              await this.markOAuthProviderFailure(route, oauthError);
               logger.warn(
                 `Failover: retrying after OAuth error from ${route.provider}/${route.model}: ${oauthError.message}`
               );
               continue;
             }
 
+            await this.markOAuthProviderFailure(route, oauthError);
             throw oauthError;
           }
         }
@@ -905,18 +901,40 @@ export class Dispatcher {
   }
 
   private wrapOAuthError(error: Error, route: RouteResult, targetApiType: string): Error {
+    const providerResponse = this.stringifyOAuthProviderResponse((error as any)?.piAiResponse);
     const message = error?.message || 'OAuth provider error';
-    let statusCode = 500;
+    const errorText = providerResponse || message;
+    const isQuotaError = this.isQuotaExhaustedError(errorText);
+    let statusCode = (error as any)?.status || (error as any)?.statusCode;
 
-    if (
-      message.includes('Not authenticated') ||
-      message.includes('re-authenticate') ||
-      message.includes('expired')
-    ) {
-      statusCode = 401;
-    } else if (message.toLowerCase().includes('model') && message.toLowerCase().includes('not')) {
-      statusCode = 400;
+    if (!statusCode) {
+      statusCode = 500;
+
+      if (isQuotaError) {
+        statusCode = 429;
+      }
+
+      if (
+        message.includes('Not authenticated') ||
+        message.includes('re-authenticate') ||
+        message.includes('expired')
+      ) {
+        statusCode = 401;
+      } else if (message.toLowerCase().includes('model') && message.toLowerCase().includes('not')) {
+        statusCode = 400;
+      }
     }
+
+    const cooldownTriggered =
+      statusCode !== 413 && statusCode !== 422 && !(statusCode === 400 && !isQuotaError);
+    const cooldownDuration =
+      (statusCode === 429 || isQuotaError) && errorText
+        ? this.parseCooldownDurationForProvider(
+            this.resolveCooldownProviderType(route),
+            errorText,
+            'OAuth'
+          )
+        : undefined;
 
     const enriched = new Error(message) as any;
     enriched.routingContext = {
@@ -926,9 +944,79 @@ export class Dispatcher {
       targetModel: route.model,
       targetApiType,
       statusCode,
+      providerResponse,
+      cooldownTriggered,
+      cooldownDuration,
     };
 
     return enriched;
+  }
+
+  private resolveCooldownProviderType(route: RouteResult): string | undefined {
+    if (typeof route.config.oauth_provider === 'string' && route.config.oauth_provider.trim()) {
+      return route.config.oauth_provider.trim();
+    }
+
+    const providerTypes = this.extractProviderTypes(route);
+    return providerTypes[0];
+  }
+
+  private parseCooldownDurationForProvider(
+    providerType: string | undefined,
+    errorText: string,
+    source: 'HTTP' | 'OAuth'
+  ): number | undefined {
+    if (!providerType) {
+      return undefined;
+    }
+
+    const parsedDuration = CooldownParserRegistry.parseCooldown(providerType, errorText);
+
+    if (parsedDuration !== null) {
+      logger.info(
+        `${source}: Parsed cooldown duration for ${providerType}: ${parsedDuration}ms (${parsedDuration / 1000}s)`
+      );
+      return parsedDuration;
+    }
+
+    logger.debug(`${source}: No cooldown duration parsed for ${providerType}, using default`);
+    return undefined;
+  }
+
+  private stringifyOAuthProviderResponse(response: unknown): string | undefined {
+    if (response === undefined || response === null) {
+      return undefined;
+    }
+
+    if (typeof response === 'string') {
+      return response;
+    }
+
+    try {
+      return JSON.stringify(response);
+    } catch {
+      return String(response);
+    }
+  }
+
+  private async markOAuthProviderFailure(route: RouteResult, oauthError: any): Promise<void> {
+    if (!oauthError?.routingContext?.cooldownTriggered) {
+      return;
+    }
+
+    const failureReason = oauthError?.routingContext?.providerResponse
+      ? `HTTP ${oauthError.routingContext.statusCode}: ${oauthError.routingContext.providerResponse}`.slice(
+          0,
+          500
+        )
+      : oauthError.message;
+
+    await CooldownManager.getInstance().markProviderFailure(
+      route.provider,
+      route.model,
+      oauthError?.routingContext?.cooldownDuration,
+      failureReason
+    );
   }
 
   private resolveOAuthInstructions(
@@ -1094,6 +1182,8 @@ export class Dispatcher {
       lower.includes('credit_balance_too_low') ||
       lower.includes('account is out of credits') ||
       lower.includes('used up your points') ||
+      lower.includes('usage limit') ||
+      lower.includes('free plan') ||
       lower.includes('your credit balance') ||
       lower.includes('remaining quota') ||
       lower.includes('payment required') ||
@@ -1144,22 +1234,11 @@ export class Dispatcher {
       // For 429 errors, try to parse provider-specific cooldown duration
       if (response.status === 429) {
         // Get provider type for parser lookup
-        const providerTypes = this.extractProviderTypes(route);
-        const providerType = providerTypes[0];
-
-        // Try to parse cooldown duration from error message
-        if (providerType) {
-          const parsedDuration = CooldownParserRegistry.parseCooldown(providerType, errorText);
-
-          if (parsedDuration) {
-            cooldownDuration = parsedDuration;
-            logger.info(
-              `Parsed cooldown duration: ${cooldownDuration}ms (${cooldownDuration / 1000}s)`
-            );
-          } else {
-            logger.debug(`No cooldown duration parsed from error, using default`);
-          }
-        }
+        cooldownDuration = this.parseCooldownDurationForProvider(
+          this.resolveCooldownProviderType(route),
+          errorText,
+          'HTTP'
+        );
       }
 
       // Mark provider+model as failed with optional duration

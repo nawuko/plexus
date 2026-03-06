@@ -12,7 +12,12 @@ import {
   proxyClaudeCodeToolName,
 } from '../../filters/pi-ai-request-filters';
 import { OAuthAuthManager } from '../../services/oauth-auth-manager';
-import { unifiedToContext, piAiMessageToUnified, piAiEventToChunk } from './type-mappers';
+import {
+  unifiedToContext,
+  piAiMessageToUnified,
+  piAiEventToChunk,
+  extractPiAiErrorMessage,
+} from './type-mappers';
 import { logger } from '../../utils/logger';
 
 /**
@@ -267,9 +272,11 @@ export class OAuthTransformer implements Transformer {
 
   async transformResponse(response: any): Promise<UnifiedChatResponse> {
     logger.silly(`${this.name}: Raw pi-ai response`, response);
-    if (response?.stopReason === 'error') {
-      const message = response.errorMessage || 'OAuth provider error';
-      throw new Error(message);
+    const piAiError = getPiAiErrorResponse(response);
+    if (piAiError) {
+      const error = new Error(piAiError.message) as Error & { piAiResponse?: unknown };
+      error.piAiResponse = piAiError.payload;
+      throw error;
     }
     const unified = piAiMessageToUnified(response, response.provider, response.model);
 
@@ -475,4 +482,31 @@ export class OAuthTransformer implements Transformer {
 
     return await complete(model, context, requestOptions);
   }
+}
+
+function getPiAiErrorResponse(response: any): { message: string; payload: unknown } | null {
+  if (!response) {
+    return null;
+  }
+
+  if (response?.stopReason === 'error') {
+    return {
+      message:
+        response.errorMessage || extractPiAiErrorMessage(response.error) || 'OAuth provider error',
+      payload: response,
+    };
+  }
+
+  if (response?.type === 'error' || response?.reason === 'error') {
+    return {
+      message:
+        extractPiAiErrorMessage(response.error) ||
+        response.errorMessage ||
+        extractPiAiErrorMessage(response) ||
+        'OAuth provider error',
+      payload: response,
+    };
+  }
+
+  return null;
 }
