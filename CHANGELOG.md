@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.18.5 - 2026-03-07
+
+### v0.18.5: Enhanced Dispatcher Resilience and UI Interaction Logic
+
+### New Features
+- **Restart Functionality:** Added a new manual restart button to the interface ([370a087](https://github.com/mcowger/plexus/commit/370a087)).
+- **Observability:** Logs now include detailed retry history, providing better visibility into request lifecycles ([d48525f](https://github.com/mcowger/plexus/commit/d48525f)).
+
+### Bug Fixes
+- **Dispatcher Error Handling:** Improved robustness of the Dispatcher when encountering malformed JSON responses or non-JSON tool call arguments ([0dd9c9f](https://github.com/mcowger/plexus/commit/0dd9c9f), [97e1eaa](https://github.com/mcowger/plexus/commit/97e1eaa)).
+- **OAuth Reliability:** Fixed an issue where empty-stream quota detection would fail to trigger the appropriate retry logic ([ba7e3de](https://github.com/mcowger/plexus/commit/ba7e3de)).
+- **Frontend Refinement:** Resolved event propagation bugs in the `CooldownRow` component that caused unintended click behaviors and fixed the cooldown details popover display ([18c0038](https://github.com/mcowger/plexus/commit/18c0038), [01c411d](https://github.com/mcowger/plexus/commit/01c411d)).
+
+### Infrastructure & Refactoring
+- **Testing:** Implemented regression tests for Dispatcher failover scenarios and malformed JSON test cases to prevent future regressions ([1a7b3b2](https://github.com/mcowger/plexus/commit/1a7b3b2)).
+
+---
+The docker image has been updated and can be found at ghcr.io/mcowger/plexus:latest
+
 ## v0.18.4 - 2026-03-06
 
 ### v0.18.4: Copilot GPT-5.4 Integration and OpenAI Codex Cooldown Management
