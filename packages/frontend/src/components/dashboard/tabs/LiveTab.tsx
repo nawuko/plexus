@@ -454,7 +454,10 @@ const CooldownRow: React.FC<CooldownRowProps> = ({
   }, [open]);
 
   return (
-    <div className="px-3 py-2 flex items-center gap-2 bg-warning/5">
+    <div
+      className="px-3 py-2 flex items-center gap-2 bg-warning/5"
+      onClick={(e) => e.stopPropagation()}
+    >
       <AlertTriangle size={12} className="text-warning shrink-0" />
       <span className="text-xs font-medium text-text">{provider}</span>
       <span className="text-xs text-text-muted truncate">
@@ -472,7 +475,10 @@ const CooldownRow: React.FC<CooldownRowProps> = ({
           <X size={13} />
         </button>
         <button
-          onClick={() => setOpen((v) => !v)}
+          onClick={(e) => {
+            e.stopPropagation();
+            setOpen((v) => !v);
+          }}
           className="text-text-muted hover:text-text transition-colors"
           aria-label="Show cooldown details"
         >
@@ -480,6 +486,7 @@ const CooldownRow: React.FC<CooldownRowProps> = ({
         </button>
         {open && (
           <div
+            onClick={(e) => e.stopPropagation()}
             className="absolute right-0 top-5 z-50 w-72 rounded-md border border-border shadow-lg p-3 text-xs space-y-2"
             style={{ backgroundColor: 'rgb(15, 23, 42)' }}
           >
