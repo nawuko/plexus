@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.18.10 - 2026-03-08
+
+### v0.18.10: CRITICAL Security Fix for Admin Key
+
+## Bug Fixes / Security
+
+- **Security Fix:** Enforced admin key authentication on all management routes ([aa1784e](https://github.com/mcowger/plexus/commit/aa1784e)). This resolves a vulnerability where certain management endpoints did not properly validate admin credentials, ensuring that unauthorized requests to administrative functions are now correctly rejected.
+
+---
+
+The Docker image has been updated and can be found at `ghcr.io/mcowger/plexus:latest`
+
 ## v0.18.9 - 2026-03-08
 
 ### Custom Date Range Filtering and Build Path Configuration
