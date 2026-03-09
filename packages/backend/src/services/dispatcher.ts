@@ -1965,6 +1965,10 @@ export class Dispatcher {
 
         if (!response.ok) {
           const errorText = await response.text();
+          logger.error(`Embeddings request failed: ${url}`, {
+            status: response.status,
+            error: errorText,
+          });
           const canRetry =
             failoverEnabled &&
             i < targets.length - 1 &&
