@@ -8,6 +8,7 @@ export * from './responses';
 export * from './mcp';
 export * from './quota-state';
 // Config tables
+export * from './enums';
 export * from './providers';
 export * from './provider-models';
 export * from './model-aliases';

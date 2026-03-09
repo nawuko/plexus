@@ -497,7 +497,11 @@ const calcVelocity = (data: AggregatedPoint[]): AggregatedPoint[] => {
  * @returns Sorted array of aggregated data points with velocity computed
  */
 // @ts-expect-error kept for future use (client-side aggregation fallback)
-const aggregateByTime = (records: UsageRecord[], range: TimeRange, customRange?: CustomDateRange | null): AggregatedPoint[] => {
+const aggregateByTime = (
+  records: UsageRecord[],
+  range: TimeRange,
+  customRange?: CustomDateRange | null
+): AggregatedPoint[] => {
   const { bucketFn } = getRangeConfig(range);
   const grouped = new Map<
     number,

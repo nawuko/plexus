@@ -1,5 +1,5 @@
 import { pgTable, serial, text, bigint, unique } from 'drizzle-orm/pg-core';
-import { oauthProviderTypeEnum } from './providers';
+import { oauthProviderTypeEnum } from './enums';
 
 export const oauthCredentials = pgTable(
   'oauth_credentials',

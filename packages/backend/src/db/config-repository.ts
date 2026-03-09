@@ -266,9 +266,7 @@ export class ConfigRepository {
     }
   }
 
-  async getProviderModels(
-    providerSlug: string
-  ): Promise<
+  async getProviderModels(providerSlug: string): Promise<
     Array<{
       modelName: string;
       pricingConfig: unknown;

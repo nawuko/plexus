@@ -297,5 +297,4 @@ export async function registerConfigRoutes(fastify: FastifyInstance) {
       count: VALID_QUOTA_CHECKER_TYPES.length,
     });
   });
-
 }
