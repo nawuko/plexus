@@ -45,12 +45,20 @@ export class OAuthAuthManager {
           if (!newAuthData[providerType]) {
             newAuthData[providerType] = { accounts: {} };
           }
+          logger.debug(
+            `OAuth: Loading ${providerType}/${accountId} from DB — ` +
+              `access=${creds.accessToken ? `present(${creds.accessToken.length} chars)` : 'MISSING'}, ` +
+              `refresh=${creds.refreshToken ? `present(${creds.refreshToken.length} chars)` : 'MISSING'}, ` +
+              `expires=${creds.expiresAt} (${creds.expiresAt > Date.now() ? 'valid' : 'EXPIRED'})`
+          );
           newAuthData[providerType].accounts[accountId] = {
             type: 'oauth',
             access: creds.accessToken,
             refresh: creds.refreshToken,
             expires: creds.expiresAt,
           } as OAuthCredentials;
+        } else {
+          logger.warn(`OAuth: No credentials found in DB for ${providerType}/${accountId}`);
         }
       }
 
@@ -82,6 +90,12 @@ export class OAuthAuthManager {
   ): Promise<void> {
     try {
       const configService = ConfigService.getInstance();
+      logger.debug(
+        `OAuth: Saving ${provider}/${accountId} to DB — ` +
+          `access=${credentials.access ? `present(${credentials.access.length} chars)` : 'MISSING'}, ` +
+          `refresh=${credentials.refresh ? `present(${credentials.refresh.length} chars)` : 'MISSING'}, ` +
+          `expires=${credentials.expires}`
+      );
       await configService.setOAuthCredentials(provider, accountId, {
         accessToken: credentials.access,
         refreshToken: credentials.refresh,
@@ -171,6 +185,14 @@ export class OAuthAuthManager {
     }
 
     if (result.newCredentials) {
+      const wasRefreshed =
+        result.newCredentials.access !== credentials.access ||
+        result.newCredentials.expires !== credentials.expires;
+      logger.debug(
+        `OAuth: getApiKey for ${provider}/${resolvedAccountId} — ` +
+          `token ${wasRefreshed ? 'WAS refreshed' : 'was NOT refreshed (not expired)'}. ` +
+          `new_refresh=${result.newCredentials.refresh ? `present(${result.newCredentials.refresh.length} chars)` : 'MISSING'}`
+      );
       providerRecord.accounts[resolvedAccountId] = {
         type: 'oauth',
         ...result.newCredentials,
