@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.18.11 - 2026-03-12
+
+### Update Gemini Streaming Protocol Compatability
+
+Preserved tool call finish reason in streams when converting to openai-completions.   Also addressed missing function id, which caused problems for some clients like Open WebUI
+
 ## v0.18.10 - 2026-03-08
 
 ### v0.18.10: CRITICAL Security Fix for Admin Key
