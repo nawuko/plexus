@@ -1,6 +1,12 @@
 import { FastifyInstance } from 'fastify';
+import { z } from 'zod';
 import { DebugManager } from '../../services/debug-manager';
 import { UsageStorageService } from '../../services/usage-storage';
+
+const patchDebugSchema = z.object({
+  enabled: z.boolean().optional(),
+  providers: z.array(z.string()).nullable().optional(),
+});
 
 export async function registerDebugRoutes(
   fastify: FastifyInstance,
