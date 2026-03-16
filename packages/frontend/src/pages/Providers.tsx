@@ -268,7 +268,7 @@ export const Providers = () => {
     }
 
     if (quotaType === 'wisdomgate') {
-      if (!options.apiKey || !(options.apiKey as string).trim()) {
+      if (!options.session || !(options.session as string).trim()) {
         return 'Session cookie is required for Wisdom Gate quota checker';
       }
     }

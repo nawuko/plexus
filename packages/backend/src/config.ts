@@ -142,6 +142,7 @@ const CopilotQuotaCheckerOptionsSchema = z.object({
 });
 
 const WisdomGateQuotaCheckerOptionsSchema = z.object({
+  session: z.string().trim().min(1, 'Session cookie is required'),
   endpoint: z.string().url().optional(),
 });
 
@@ -255,7 +256,7 @@ const ProviderQuotaCheckerSchema = z.discriminatedUnion('type', [
     enabled: z.boolean().default(true),
     intervalMinutes: z.number().min(1).default(30),
     id: z.string().trim().min(1).optional(),
-    options: WisdomGateQuotaCheckerOptionsSchema.optional().default({}),
+    options: WisdomGateQuotaCheckerOptionsSchema.optional(),
   }),
   z.object({
     type: z.literal('apertis'),

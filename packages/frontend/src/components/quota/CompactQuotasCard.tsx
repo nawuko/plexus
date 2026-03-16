@@ -15,6 +15,7 @@ import {
   Sparkles,
   AlertTriangle,
   Wallet,
+  CreditCard,
 } from 'lucide-react';
 
 interface CompactQuotasCardProps {
@@ -43,6 +44,7 @@ const getCheckerCategory = (quota: QuotaCheckerInfo): string => {
   if (id.includes('zai')) return 'zai';
   if (id.includes('nanogpt') || id.includes('nano')) return 'nanogpt';
   if (id.includes('naga')) return 'naga';
+  if (id.includes('wisdomgate')) return 'wisdomgate';
   if (id.includes('kimi-code') || id.includes('kimi')) return 'kimi';
   if (id.includes('copilot')) return 'copilot';
   if (id.includes('gemini-cli') || id.includes('gemini')) return 'gemini-cli';
@@ -59,6 +61,7 @@ const getTypeDisplayName = (category: string): string => {
     synthetic: 'Synthetic',
     nanogpt: 'NanoGPT',
     naga: 'Naga',
+    wisdomgate: 'Wisdom Gate',
     'minimax-coding': 'MiniMax Coding',
     'apertis-coding-plan': 'Apertis Coding',
     kimi: 'Kimi',
@@ -92,6 +95,7 @@ const formatCheckerDisplayName = (quota: QuotaCheckerInfo): string => {
     'naga-',
     'gemini-',
     'poe-',
+    'wisdomgate-',
   ];
   for (const prefix of prefixes) {
     if (displayPart.toLowerCase().startsWith(prefix)) {
@@ -128,6 +132,8 @@ const getCheckerIcon = (category: string) => {
       return <Cpu className={iconClass} />;
     case 'naga':
       return <Shield className={iconClass} />;
+    case 'wisdomgate':
+      return <CreditCard className={iconClass} />;
     case 'minimax-coding':
       return <Code2 className={iconClass} />;
     case 'apertis-coding-plan':
@@ -163,6 +169,8 @@ const getTrackedWindowsForChecker = (category: string, windows: any[]): string[]
       return Array.from(availableTypes)
         .filter((t) => t !== 'subscription')
         .sort((a, b) => (WINDOW_PRIORITY[a] || 99) - (WINDOW_PRIORITY[b] || 99));
+    case 'wisdomgate':
+      return ['monthly'].filter((t) => availableTypes.has(t));
     case 'minimax-coding':
       return ['custom'].filter((t) => availableTypes.has(t));
     case 'apertis-coding-plan':

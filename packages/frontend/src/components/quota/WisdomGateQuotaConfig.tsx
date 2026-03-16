@@ -22,12 +22,12 @@ export const WisdomGateQuotaConfig: React.FC<WisdomGateQuotaConfigProps> = ({
         </label>
         <Input
           type="password"
-          value={(options.apiKey as string) ?? ''}
-          onChange={(e) => handleChange('apiKey', e.target.value)}
+          value={(options.session as string) ?? ''}
+          onChange={(e) => handleChange('session', e.target.value)}
           placeholder="Paste your Wisdom Gate session cookie"
         />
         <span className="text-[10px] text-text-muted">
-          Required. The session cookie from your Wisdom Gate account.
+          Required. Found in browser cookies after logging in to wisgate.ai.
         </span>
       </div>
 
@@ -38,7 +38,7 @@ export const WisdomGateQuotaConfig: React.FC<WisdomGateQuotaConfigProps> = ({
         <Input
           value={(options.endpoint as string) ?? ''}
           onChange={(e) => handleChange('endpoint', e.target.value)}
-          placeholder="https://wisdom-gate.juheapi.com/v1/users/me/balance"
+          placeholder="https://wisgate.ai/api/dashboard/billing/usage/details"
         />
         <span className="text-[10px] text-text-muted">
           Leave blank to use the default endpoint.
