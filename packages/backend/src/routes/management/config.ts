@@ -8,7 +8,6 @@ import {
   McpServerConfigSchema,
 } from '../../config';
 import { ConfigService } from '../../services/config-service';
-import { adminKeyFromYaml } from '../../index';
 
 export async function registerConfigRoutes(fastify: FastifyInstance) {
   const configService = ConfigService.getInstance();
@@ -17,8 +16,10 @@ export async function registerConfigRoutes(fastify: FastifyInstance) {
 
   fastify.get('/v0/management/config/status', async (_request, reply) => {
     try {
+      // Check if ADMIN_KEY was loaded from YAML (deprecated, but kept for backward compatibility)
+      const adminKeyFromYaml = process.env.ADMIN_KEY_FROM_YAML === 'true';
       return reply.send({
-        adminKeyFromYaml: !!adminKeyFromYaml,
+        adminKeyFromYaml: adminKeyFromYaml,
       });
     } catch (e: any) {
       return reply.code(500).send({ error: 'Internal server error' });

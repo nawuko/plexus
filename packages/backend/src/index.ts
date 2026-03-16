@@ -58,6 +58,7 @@ if (!process.env.ADMIN_KEY) {
       if (parsed?.adminKey) {
         adminKeyFromYaml = parsed.adminKey;
         process.env.ADMIN_KEY = adminKeyFromYaml;
+        process.env.ADMIN_KEY_FROM_YAML = 'true';
 
         // Print large ASCII banner warning
         logger.error('');

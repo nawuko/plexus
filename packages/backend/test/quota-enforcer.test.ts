@@ -1,7 +1,8 @@
-import { describe, test, expect, beforeEach, afterEach, mock } from 'bun:test';
+import { describe, test, expect, beforeEach, afterEach, beforeAll, mock } from 'bun:test';
 import { QuotaEnforcer, QuotaCheckResult } from '../src/services/quota/quota-enforcer';
 import { setConfigForTesting, PlexusConfig } from '../src/config';
 import { getDatabase } from '../src/db/client';
+import { runMigrations } from '../src/db/migrate';
 import * as sqliteSchema from '../drizzle/schema/sqlite';
 import { eq } from 'drizzle-orm';
 
@@ -33,10 +34,22 @@ describe('QuotaEnforcer', () => {
   let quotaEnforcer: QuotaEnforcer;
   let db: ReturnType<typeof getDatabase>;
 
+  beforeAll(async () => {
+    // Ensure migrations are run before tests
+    await runMigrations();
+  });
+
   beforeEach(async () => {
     // Reset database state
     db = getDatabase();
-    await db.delete(sqliteSchema.quotaState);
+    try {
+      await db.delete(sqliteSchema.quotaState);
+    } catch (e: any) {
+      // Table might not exist yet, ignore
+      if (!e.message?.includes('no such table')) {
+        throw e;
+      }
+    }
 
     // Reset config
     setConfigForTesting(createTestConfig());
@@ -47,7 +60,14 @@ describe('QuotaEnforcer', () => {
 
   afterEach(async () => {
     // Clean up test data
-    await db.delete(sqliteSchema.quotaState);
+    try {
+      await db.delete(sqliteSchema.quotaState);
+    } catch (e: any) {
+      // Table might not exist, ignore
+      if (!e.message?.includes('no such table')) {
+        throw e;
+      }
+    }
   });
 
   describe('checkQuota', () => {

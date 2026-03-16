@@ -9,6 +9,13 @@ import { UsageStorageService } from '../../../services/usage-storage';
 import { DebugManager } from '../../../services/debug-manager';
 import { SelectorFactory } from '../../../services/selectors/factory';
 
+// Helper to close Fastify instances after tests
+const closeFastify = async (fastify: FastifyInstance | undefined) => {
+  if (fastify) {
+    await fastify.close();
+  }
+};
+
 const BASE_CONFIG = {
   providers: {},
   models: {},
@@ -74,6 +81,10 @@ describe('GET /v0/management/auth/verify', () => {
     const { mockUsageStorage, mockDispatcher } = makeMockDeps();
     await registerManagementRoutes(fastify, mockUsageStorage, mockDispatcher);
     await fastify.ready();
+  });
+
+  afterAll(async () => {
+    await closeFastify(fastify);
   });
 
   it('returns 200 with { ok: true } when the correct admin key is provided', async () => {
@@ -145,6 +156,10 @@ describe('Management route protection', () => {
     const { mockUsageStorage, mockDispatcher } = makeMockDeps();
     await registerManagementRoutes(fastify, mockUsageStorage, mockDispatcher);
     await fastify.ready();
+  });
+
+  afterAll(async () => {
+    await closeFastify(fastify);
   });
 
   it('rejects GET /v0/management/cooldowns without admin key', async () => {
@@ -259,6 +274,13 @@ describe('v1 inference routes are unaffected by admin key auth', () => {
     await registerInferenceRoutes(fastify, mockDispatcher, mockUsageStorage);
     await registerManagementRoutes(fastify, mockUsageStorage, mockDispatcher);
     await fastify.ready();
+  });
+
+  afterAll(async () => {
+    await closeFastify(fastify);
+    // Clean up singletons to prevent test hangs
+    SelectorFactory.setUsageStorage(null as any);
+    DebugManager.getInstance().setStorage(null as any);
   });
 
   it('accepts a v1 request using a valid API key (no admin key needed)', async () => {
