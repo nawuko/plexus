@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.19.2 - 2026-03-19
+
+### Streaming Chunk Preservation and OAuth Transformer Enhancements
+
+## Bug Fixes
+
+- **Stream Chunk Preservation**: Fixed handling of the first stream chunk in `probeStreamingStart` timeout path to prevent data loss during streaming operations ([d3072a2](https://github.com/mcowger/plexus/commit/d3072a2))
+- **Anthropic Tool Call Index Remapping**: Corrected tool call index remapping for Anthropic API integrations ([d3072a2](https://github.com/mcowger/plexus/commit/d3072a2))
+
+## Infrastructure & Enhancements
+
+- **Dispatcher and OAuthTransformer Improvements**: Enhanced Dispatcher and OAuthTransformer components for improved API key handling and OAuth token management ([17bea3c](https://github.com/mcowger/plexus/commit/17bea3c))
+- **Claude Masking Configuration**: Reverted Claude masking logic implementation while preserving the configuration field for future use ([7cda203](https://github.com/mcowger/plexus/commit/7cda203))
+
+---
+
+The Docker image has been updated and can be found at `ghcr.io/mcowger/plexus:latest`
+
 ## v0.19.1 - 2026-03-19
 
 ### v0.19.1: Cost-based quotas, Ollama native routing, and CORS proxy support
