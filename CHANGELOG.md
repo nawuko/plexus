@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.19.3 - 2026-03-19
+
+### Path parameter encoding fixes for provider and model alias endpoints
+
+## Bug Fixes
+
+- Fixed support for forward slashes in provider IDs across GET, PUT, PATCH, and DELETE routes ([a799e6e](https://github.com/mcowger/plexus/commit/a799e6e))
+- Fixed support for forward slashes in model alias IDs across PUT, PATCH, and DELETE routes ([e831198](https://github.com/mcowger/plexus/commit/e831198))
+
+These fixes improve URL path parameter handling to properly support special characters in resource identifiers, allowing providers and model aliases with forward slashes in their IDs to be accessed and modified correctly via API endpoints.
+
+---
+
+The Docker image has been updated and can be found at `ghcr.io/mcowger/plexus:latest`
+
 ## v0.19.2 - 2026-03-19
 
 ### Streaming Chunk Preservation and OAuth Transformer Enhancements
