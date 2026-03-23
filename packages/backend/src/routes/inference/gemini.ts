@@ -120,13 +120,17 @@ export async function registerGeminiRoute(
         startTime,
         'gemini',
         shouldEstimateTokens,
-        body
+        body,
+        quotaEnforcer
+          ? (finalUsageRecord: Partial<UsageRecord>) => {
+              recordQuotaUsage((request as any).keyName, finalUsageRecord, quotaEnforcer).catch(
+                (err) => {
+                  logger.error('[GeminiRoute] Failed to record quota usage:', err);
+                }
+              );
+            }
+          : undefined
       );
-
-      // Record quota usage after request completes
-      if (quotaEnforcer) {
-        await recordQuotaUsage((request as any).keyName, usageRecord, quotaEnforcer);
-      }
 
       return result;
     } catch (e: any) {

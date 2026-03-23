@@ -179,13 +179,17 @@ export async function registerResponsesRoute(
         startTime,
         'responses',
         shouldEstimateTokens,
-        body
+        body,
+        quotaEnforcer
+          ? (finalUsageRecord: Partial<UsageRecord>) => {
+              recordQuotaUsage((request as any).keyName, finalUsageRecord, quotaEnforcer).catch(
+                (err) => {
+                  logger.error('[ResponsesRoute] Failed to record quota usage:', err);
+                }
+              );
+            }
+          : undefined
       );
-
-      // Record quota usage after request completes
-      if (quotaEnforcer) {
-        await recordQuotaUsage((request as any).keyName, usageRecord, quotaEnforcer);
-      }
 
       // Store response if requested and not streaming
       if (body.store !== false && !body.stream) {

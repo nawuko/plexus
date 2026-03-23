@@ -7,6 +7,8 @@ import { UsageRecord } from '../../types/usage';
 import { getClientIp } from '../../utils/ip';
 import { calculateCosts } from '../../utils/calculate-costs';
 import { DebugManager } from '../../services/debug-manager';
+import { QuotaEnforcer } from '../../services/quota/quota-enforcer';
+import { checkQuotaMiddleware, recordQuotaUsage } from '../../services/quota/quota-middleware';
 import { UnifiedSpeechRequest } from '../../types/unified';
 
 const VALID_VOICES = [
@@ -30,7 +32,8 @@ const VALID_STREAM_FORMATS = ['sse', 'audio'];
 export async function registerSpeechRoute(
   fastify: FastifyInstance,
   dispatcher: Dispatcher,
-  usageStorage: UsageStorageService
+  usageStorage: UsageStorageService,
+  quotaEnforcer?: QuotaEnforcer
 ) {
   /**
    * POST /v1/audio/speech
@@ -96,6 +99,11 @@ export async function registerSpeechRoute(
         instructions: body.instructions ? '(provided)' : undefined,
       });
 
+      if (quotaEnforcer) {
+        const allowed = await checkQuotaMiddleware(request, reply, quotaEnforcer);
+        if (!allowed) return;
+      }
+
       const unifiedResponse = await dispatcher.dispatchSpeech(unifiedRequest);
 
       // Emit 'updated' event with routing decision details
@@ -120,6 +128,12 @@ export async function registerSpeechRoute(
       calculateCosts(usageRecord, pricing, providerDiscount);
 
       usageStorage.saveRequest(usageRecord as UsageRecord);
+
+      if (quotaEnforcer) {
+        recordQuotaUsage((request as any).keyName, usageRecord, quotaEnforcer).catch((err) => {
+          logger.error('[SpeechRoute] Failed to record quota usage:', err);
+        });
+      }
 
       DebugManager.getInstance().addTransformedResponse(requestId, {
         size: unifiedResponse.audio?.length || 0,
