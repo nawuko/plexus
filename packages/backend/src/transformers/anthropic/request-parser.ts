@@ -106,7 +106,7 @@ export async function parseAnthropicRequest(input: any): Promise<UnifiedChatRequ
     temperature: input.temperature,
     stream: input.stream,
     tools: input.tools ? convertAnthropicToolsToUnified(input.tools) : undefined,
-    tool_choice: input.tool_choice,
+    tool_choice: input.tools ? input.tool_choice : undefined,
   };
 
   // Map Thinking/Reasoning Configuration
@@ -119,7 +119,7 @@ export async function parseAnthropicRequest(input: any): Promise<UnifiedChatRequ
   }
 
   // Strict Tool Choice Mapping
-  if (input.tool_choice) {
+  if (input.tools && input.tool_choice) {
     if (typeof input.tool_choice === 'object' && input.tool_choice.type === 'tool') {
       result.tool_choice = {
         type: 'function',
