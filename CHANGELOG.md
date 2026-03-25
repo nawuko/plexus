@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.19.7 - 2026-03-25
+
+### Ollama quota card account name display fix
+
+- Fixed provider account name display on Ollama quota cards ([be509c7](https://github.com/mcowger/plexus/commit/be509c7)) Fixes: #142
+
 ## v0.19.6 - 2026-03-24
 
 ### v0.19.6: Ollama Quota Management and Database-Level Encryption
