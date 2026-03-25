@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.19.6 - 2026-03-24
+
+### v0.19.6: Ollama Quota Management and Database-Level Encryption
+
+## New Features
+
+- **Ollama Quota Checker** ([81cf81e](https://github.com/mcowger/plexus/commit/81cf81e)): Added session and weekly limit enforcement for Ollama resource consumption.
+- **Database Encryption at Rest** ([15b9214](https://github.com/mcowger/plexus/commit/15b9214)): Implemented AES-256-GCM encryption for sensitive database fields, providing enhanced security for encrypted data persistence.
+
+## Bug Fixes
+
+- Fixed invisible progress bars by adding missing `--color-warning` CSS variable ([b705795](https://github.com/mcowger/plexus/commit/b705795))
+- Fixed image fallthrough test cases ([c3c50f0](https://github.com/mcowger/plexus/commit/c3c50f0))
+
+## Docker Image
+
+The Docker image for this release has been updated and can be found at `ghcr.io/mcowger/plexus:latest`
+
 ## v0.19.5 - 2026-03-22
 
 ### v0.19.5: Configuration resolution fixes, Prometheus monitoring, and dependency updates
