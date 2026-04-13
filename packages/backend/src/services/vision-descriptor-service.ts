@@ -12,6 +12,55 @@ import { UsageStorageService } from './usage-storage';
 import { calculateCosts } from '../utils/calculate-costs';
 import { estimateKwhUsed } from './inference-energy';
 
+interface CacheEntry {
+  description: string;
+  timestamp: number;
+}
+
+class VisionDescriptionCache {
+  private cache = new Map<string, CacheEntry>();
+  private maxSize = 1000;
+  private ttlMs = 60 * 60 * 1000;
+
+  private async hashUrl(url: string): Promise<string> {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(url);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  async get(url: string): Promise<string | null> {
+    const hash = await this.hashUrl(url);
+    const entry = this.cache.get(hash);
+    if (!entry) return null;
+    if (Date.now() - entry.timestamp > this.ttlMs) {
+      this.cache.delete(hash);
+      return null;
+    }
+    return entry.description;
+  }
+
+  async set(url: string, description: string): Promise<void> {
+    if (this.cache.size >= this.maxSize) {
+      const oldestKey = this.cache.keys().next().value;
+      if (oldestKey) this.cache.delete(oldestKey);
+    }
+    const hash = await this.hashUrl(url);
+    this.cache.set(hash, { description, timestamp: Date.now() });
+  }
+
+  clear(): void {
+    this.cache.clear();
+  }
+
+  size(): number {
+    return this.cache.size;
+  }
+}
+
+const visionCache = new VisionDescriptionCache();
+
 export class VisionDescriptorService {
   /**
    * Processes a request by converting images to text descriptions if needed.
@@ -104,12 +153,17 @@ export class VisionDescriptorService {
     usageStorage?: UsageStorageService,
     parentRequest?: UnifiedChatRequest
   ): Promise<string> {
+    const cached = await visionCache.get(url);
+    if (cached) {
+      logger.debug(`[vision-fallthrough] Cache hit for image (hash)`);
+      return cached;
+    }
+
     const dispatcher = new Dispatcher();
     if (usageStorage) {
       dispatcher.setUsageStorage(usageStorage);
     }
 
-    // Create a request for the descriptor model
     const descriptorRequest: UnifiedChatRequest = {
       model: model,
       messages: [
@@ -127,7 +181,6 @@ export class VisionDescriptorService {
           ],
         },
       ],
-      // Pass through parent request context for logging
       incomingApiType: 'chat',
       ...(parentRequest
         ? {
@@ -139,7 +192,6 @@ export class VisionDescriptorService {
         : {}),
     };
 
-    // Recursion guard: tag this request so Dispatcher doesn't try to fallthrough again
     (descriptorRequest as any)._isVisionDescriptorRequest = true;
     (descriptorRequest as any)._descriptorStartTime = Date.now();
     (descriptorRequest as any).requestId = `desc-${crypto.randomUUID()}`;
@@ -202,6 +254,7 @@ export class VisionDescriptorService {
       }
 
       logger.debug(`[vision-fallthrough] Received description (${description.length} chars)`);
+      await visionCache.set(url, description);
       return description;
     } catch (error) {
       logger.error(`[vision-fallthrough] Error describing image with ${model}:`, error);
