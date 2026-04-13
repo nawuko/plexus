@@ -55,6 +55,7 @@ export class ResponsesTransformer implements Transformer {
 
     // Convert tools (filter out built-in tools that Chat Completions doesn't support)
     const tools = this.convertToolsForChatCompletions(input.tools || []);
+    const hasTools = tools && tools.length > 0;
 
     return {
       requestId: input.requestId,
@@ -63,8 +64,8 @@ export class ResponsesTransformer implements Transformer {
       max_tokens: input.max_output_tokens,
       temperature: input.temperature ?? 1.0,
       stream: input.stream ?? false,
-      tools: tools.length > 0 ? tools : undefined,
-      tool_choice: this.convertToolChoiceForChatCompletions(input.tool_choice),
+      tools: hasTools ? tools : undefined,
+      tool_choice: hasTools ? this.convertToolChoiceForChatCompletions(input.tool_choice) : undefined,
       reasoning: input.reasoning,
       include: input.include,
       prompt_cache_key: input.prompt_cache_key,

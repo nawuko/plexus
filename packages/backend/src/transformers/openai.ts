@@ -50,14 +50,16 @@ export class OpenAITransformer implements Transformer {
           })
         : undefined;
 
+    const hasTools = normalizedTools && normalizedTools.length > 0;
+
     const out: any = {
       model: request.model,
       messages,
       max_tokens: request.max_tokens,
       temperature: request.temperature,
       stream: request.stream,
-      tools: normalizedTools && normalizedTools.length > 0 ? normalizedTools : undefined,
-      tool_choice: request.tool_choice,
+      tools: hasTools ? normalizedTools : undefined,
+      tool_choice: hasTools ? request.tool_choice : undefined,
     };
 
     if (request.response_format) {
