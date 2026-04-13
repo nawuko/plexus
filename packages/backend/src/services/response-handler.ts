@@ -29,7 +29,8 @@ export async function handleResponse(
   startTime: number,
   apiType: 'chat' | 'messages' | 'gemini' | 'responses',
   shouldEstimateTokens: boolean = false,
-  originalRequest?: any
+  originalRequest?: any,
+  onComplete?: (usageRecord: Partial<UsageRecord>) => Promise<void> | void
 ) {
   // Populate usage record with metadata from the dispatcher's selection
   usageRecord.selectedModelName = unifiedResponse.plexus?.model || unifiedResponse.model; // Fallback to unifiedResponse.model if plexus.model is missing
@@ -166,7 +167,8 @@ export async function handleResponse(
       shouldEstimateTokens,
       providerApiType,
       apiType,
-      originalRequest
+      originalRequest,
+      onComplete
     );
 
     // Convert Web Stream to Node Stream for piping
@@ -212,6 +214,12 @@ export async function handleResponse(
 
     // Record the usage.
     finalizeUsage(usageRecord, unifiedResponse, usageStorage, startTime, pricing, providerDiscount);
+    Promise.resolve(onComplete?.(usageRecord)).catch((err) => {
+      logger.error(
+        `[ResponseHandler] Failed to run completion hook for ${usageRecord.requestId}:`,
+        err
+      );
+    });
 
     logger.debug(`Outgoing ${apiType} Response`, responseBody);
     return reply.send(responseBody);

@@ -22,6 +22,7 @@ export class UsageInspector extends PassThrough {
   private apiType: string;
   private incomingApiType: string;
   private originalRequest?: any;
+  private onComplete?: (usageRecord: Partial<UsageRecord>) => Promise<void> | void;
   private firstChunk = true;
 
   constructor(
@@ -34,7 +35,8 @@ export class UsageInspector extends PassThrough {
     shouldEstimateTokens: boolean = false,
     apiType: string = 'chat',
     incomingApiType?: string,
-    originalRequest?: any
+    originalRequest?: any,
+    onComplete?: (usageRecord: Partial<UsageRecord>) => Promise<void> | void
   ) {
     super();
     this.usageStorage = usageStorage;
@@ -46,6 +48,7 @@ export class UsageInspector extends PassThrough {
     this.apiType = apiType;
     this.incomingApiType = incomingApiType || apiType;
     this.originalRequest = originalRequest;
+    this.onComplete = onComplete;
   }
 
   override _transform(chunk: any, encoding: BufferEncoding, callback: Function) {
@@ -159,6 +162,13 @@ export class UsageInspector extends PassThrough {
             );
           });
       }
+
+      Promise.resolve(this.onComplete?.(this.usageRecord)).catch((err) => {
+        logger.error(
+          `[Inspector:Usage] Failed to run completion hook for ${this.usageRecord.requestId}:`,
+          err
+        );
+      });
 
       logger.debug(
         `[Inspector:Usage] Request ${this.usageRecord.requestId} usage analysis complete.`

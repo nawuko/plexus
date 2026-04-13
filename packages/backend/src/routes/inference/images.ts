@@ -7,13 +7,16 @@ import { UsageRecord } from '../../types/usage';
 import { getClientIp } from '../../utils/ip';
 import { calculateCosts } from '../../utils/calculate-costs';
 import { DebugManager } from '../../services/debug-manager';
+import { QuotaEnforcer } from '../../services/quota/quota-enforcer';
+import { checkQuotaMiddleware, recordQuotaUsage } from '../../services/quota/quota-middleware';
 import { UnifiedImageGenerationRequest, UnifiedImageEditRequest } from '../../types/unified';
 import { attachKeyAccessPolicy } from '../../utils/auth';
 
 export async function registerImagesRoute(
   fastify: FastifyInstance,
   dispatcher: Dispatcher,
-  usageStorage: UsageStorageService
+  usageStorage: UsageStorageService,
+  quotaEnforcer?: QuotaEnforcer
 ) {
   /**
    * POST /v1/images/generations
@@ -79,6 +82,11 @@ export async function registerImagesRoute(
         response_format: body.response_format,
       });
 
+      if (quotaEnforcer) {
+        const allowed = await checkQuotaMiddleware(request, reply, quotaEnforcer);
+        if (!allowed) return;
+      }
+
       const unifiedResponse = await dispatcher.dispatchImageGenerations(unifiedRequest);
 
       // Emit 'updated' event with routing decision details
@@ -105,6 +113,12 @@ export async function registerImagesRoute(
         ((unifiedResponse.plexus as any)?.retryHistory as string | undefined) || null;
 
       usageStorage.saveRequest(usageRecord as UsageRecord);
+
+      if (quotaEnforcer) {
+        recordQuotaUsage((request as any).keyName, usageRecord, quotaEnforcer).catch((err) => {
+          logger.error('[ImagesRoute] Failed to record quota usage:', err);
+        });
+      }
 
       DebugManager.getInstance().addTransformedResponse(requestId, {
         created: unifiedResponse.created,
@@ -248,6 +262,11 @@ export async function registerImagesRoute(
         size: formFields.size,
       });
 
+      if (quotaEnforcer) {
+        const allowed = await checkQuotaMiddleware(request, reply, quotaEnforcer);
+        if (!allowed) return;
+      }
+
       const unifiedResponse = await dispatcher.dispatchImageEdits(unifiedRequest);
 
       usageStorage.emitUpdatedAsync({
@@ -273,6 +292,12 @@ export async function registerImagesRoute(
         ((unifiedResponse.plexus as any)?.retryHistory as string | undefined) || null;
 
       usageStorage.saveRequest(usageRecord as UsageRecord);
+
+      if (quotaEnforcer) {
+        recordQuotaUsage((request as any).keyName, usageRecord, quotaEnforcer).catch((err) => {
+          logger.error('[ImagesRoute] Failed to record quota usage:', err);
+        });
+      }
 
       DebugManager.getInstance().addTransformedResponse(requestId, {
         created: unifiedResponse.created,

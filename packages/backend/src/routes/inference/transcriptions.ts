@@ -7,13 +7,16 @@ import { UsageRecord } from '../../types/usage';
 import { getClientIp } from '../../utils/ip';
 import { calculateCosts } from '../../utils/calculate-costs';
 import { DebugManager } from '../../services/debug-manager';
+import { QuotaEnforcer } from '../../services/quota/quota-enforcer';
+import { checkQuotaMiddleware, recordQuotaUsage } from '../../services/quota/quota-middleware';
 import { UnifiedTranscriptionRequest } from '../../types/unified';
 import { attachKeyAccessPolicy } from '../../utils/auth';
 
 export async function registerTranscriptionsRoute(
   fastify: FastifyInstance,
   dispatcher: Dispatcher,
-  usageStorage: UsageStorageService
+  usageStorage: UsageStorageService,
+  quotaEnforcer?: QuotaEnforcer
 ) {
   /**
    * POST /v1/audio/transcriptions
@@ -143,6 +146,11 @@ export async function registerTranscriptionsRoute(
         temperature,
       });
 
+      if (quotaEnforcer) {
+        const allowed = await checkQuotaMiddleware(request, reply, quotaEnforcer);
+        if (!allowed) return;
+      }
+
       // Dispatch
       const unifiedResponse = await dispatcher.dispatchTranscription(unifiedRequest);
 
@@ -173,6 +181,12 @@ export async function registerTranscriptionsRoute(
       usageRecord.retryHistory = unifiedResponse.plexus?.retryHistory || null;
 
       usageStorage.saveRequest(usageRecord as UsageRecord);
+
+      if (quotaEnforcer) {
+        recordQuotaUsage((request as any).keyName, usageRecord, quotaEnforcer).catch((err) => {
+          logger.error('[TranscriptionsRoute] Failed to record quota usage:', err);
+        });
+      }
 
       const formattedResponse = await transformer.formatResponse(unifiedResponse, response_format);
 

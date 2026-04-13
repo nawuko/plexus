@@ -8,11 +8,14 @@ import { getClientIp } from '../../utils/ip';
 import { calculateCosts } from '../../utils/calculate-costs';
 import { DebugManager } from '../../services/debug-manager';
 import { attachKeyAccessPolicy } from '../../utils/auth';
+import { QuotaEnforcer } from '../../services/quota/quota-enforcer';
+import { checkQuotaMiddleware, recordQuotaUsage } from '../../services/quota/quota-middleware';
 
 export async function registerEmbeddingsRoute(
   fastify: FastifyInstance,
   dispatcher: Dispatcher,
-  usageStorage: UsageStorageService
+  usageStorage: UsageStorageService,
+  quotaEnforcer?: QuotaEnforcer
 ) {
   /**
    * POST /v1/embeddings
@@ -61,6 +64,11 @@ export async function registerEmbeddingsRoute(
 
       DebugManager.getInstance().startLog(requestId, body);
 
+      if (quotaEnforcer) {
+        const allowed = await checkQuotaMiddleware(request, reply, quotaEnforcer);
+        if (!allowed) return;
+      }
+
       const unifiedResponse = await dispatcher.dispatchEmbeddings(unifiedRequest);
 
       // Emit 'updated' event with routing decision details
@@ -88,6 +96,12 @@ export async function registerEmbeddingsRoute(
       calculateCosts(usageRecord, pricing, providerDiscount);
 
       usageStorage.saveRequest(usageRecord as UsageRecord);
+
+      if (quotaEnforcer) {
+        recordQuotaUsage((request as any).keyName, usageRecord, quotaEnforcer).catch((err) => {
+          logger.error('[EmbeddingsRoute] Failed to record quota usage:', err);
+        });
+      }
 
       const formattedResponse = await transformer.formatResponse(unifiedResponse);
 

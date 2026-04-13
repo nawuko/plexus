@@ -35,9 +35,9 @@ export async function registerInferenceRoutes(
     await registerMessagesRoute(protectedRoutes, dispatcher, usageStorage, quotaEnforcer);
     await registerGeminiRoute(protectedRoutes, dispatcher, usageStorage, quotaEnforcer);
     await registerResponsesRoute(protectedRoutes, dispatcher, usageStorage, quotaEnforcer);
-    await registerEmbeddingsRoute(protectedRoutes, dispatcher, usageStorage);
-    await registerTranscriptionsRoute(protectedRoutes, dispatcher, usageStorage);
-    await registerSpeechRoute(protectedRoutes, dispatcher, usageStorage);
-    await registerImagesRoute(protectedRoutes, dispatcher, usageStorage);
+    await registerEmbeddingsRoute(protectedRoutes, dispatcher, usageStorage, quotaEnforcer);
+    await registerTranscriptionsRoute(protectedRoutes, dispatcher, usageStorage, quotaEnforcer);
+    await registerSpeechRoute(protectedRoutes, dispatcher, usageStorage, quotaEnforcer);
+    await registerImagesRoute(protectedRoutes, dispatcher, usageStorage, quotaEnforcer);
   });
 }
