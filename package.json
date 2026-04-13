@@ -34,8 +34,8 @@
   ],
   "dependencies": {
     "@mariozechner/pi-ai": "^0.62.0",
-    "@sinclair/typebox": "^0.34.48",
+    "@sinclair/typebox": "^0.34.49",
     "bun": "^1.3.11",
-    "parse-duration": "^2.1.5"
+    "parse-duration": "^2.1.6"
   }
 }
