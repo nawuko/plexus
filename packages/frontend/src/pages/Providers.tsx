@@ -58,6 +58,7 @@ const KNOWN_APIS = [
   'messages',
   'gemini',
   'embeddings',
+  'rerank',
   'transcriptions',
   'speech',
   'images',
@@ -122,6 +123,7 @@ const getApiBadgeStyle = (apiType: string): React.CSSProperties => {
     case 'gemini':
       return { backgroundColor: '#5084ff', color: 'white', border: 'none' };
     case 'embeddings':
+    case 'rerank':
       return { backgroundColor: '#10b981', color: 'white', border: 'none' };
     case 'transcriptions':
       return { backgroundColor: '#a855f7', color: 'white', border: 'none' };
@@ -2608,21 +2610,23 @@ export const Providers = () => {
                                     const newType = e.target.value as
                                       | 'chat'
                                       | 'embeddings'
+                                      | 'rerank'
                                       | 'transcriptions'
                                       | 'speech'
                                       | 'image'
                                       | 'responses';
-                                    // If switching to embeddings, clear non-embeddings APIs from access_via
-                                    if (newType === 'embeddings') {
+                                    // If switching to a specialized API model type, clear
+                                    // incompatible access_via entries and pin the compatible API.
+                                    if (newType === 'embeddings' || newType === 'rerank') {
                                       const filteredAccessVia = (mCfg.access_via || []).filter(
-                                        (api: string) => api === 'embeddings'
+                                        (api: string) => api === newType
                                       );
                                       updateModelConfig(mId, {
                                         type: newType,
                                         access_via:
                                           filteredAccessVia.length > 0
                                             ? filteredAccessVia
-                                            : ['embeddings'],
+                                            : [newType],
                                       });
                                     } else if (newType === 'transcriptions') {
                                       const filteredAccessVia = (mCfg.access_via || []).filter(
@@ -2675,6 +2679,7 @@ export const Providers = () => {
                                 >
                                   <option value="chat">Chat</option>
                                   <option value="embeddings">Embeddings</option>
+                                  <option value="rerank">Rerank</option>
                                   <option value="transcriptions">Transcriptions</option>
                                   <option value="speech">Speech</option>
                                   <option value="image">Image</option>
@@ -2731,6 +2736,7 @@ export const Providers = () => {
                                 </select>
                               </div>
                               {mCfg.type !== 'embeddings' &&
+                                mCfg.type !== 'rerank' &&
                                 mCfg.type !== 'transcriptions' &&
                                 mCfg.type !== 'speech' &&
                                 mCfg.type !== 'image' &&
@@ -2773,6 +2779,7 @@ export const Providers = () => {
                                         return true;
                                       }).map((apiType) => {
                                         const isEmbeddingsModel = mCfg.type === 'embeddings';
+                                        const isRerankModel = mCfg.type === 'rerank';
                                         const isTranscriptionsModel =
                                           mCfg.type === 'transcriptions';
                                         const isSpeechModel = mCfg.type === 'speech';
@@ -2780,6 +2787,7 @@ export const Providers = () => {
                                         const isResponsesModel = mCfg.type === 'responses';
                                         const isDisabled =
                                           (isEmbeddingsModel && apiType !== 'embeddings') ||
+                                          (isRerankModel && apiType !== 'rerank') ||
                                           (isTranscriptionsModel && apiType !== 'transcriptions') ||
                                           (isSpeechModel && apiType !== 'speech') ||
                                           (isImageModel && apiType !== 'images') ||
@@ -2857,6 +2865,7 @@ export const Providers = () => {
                                         hasOllamaBaseUrl &&
                                         modelMissingOllamaAccess &&
                                         mCfg.type !== 'embeddings' &&
+                                        mCfg.type !== 'rerank' &&
                                         mCfg.type !== 'transcriptions' &&
                                         mCfg.type !== 'speech' &&
                                         mCfg.type !== 'image' &&
@@ -2878,7 +2887,7 @@ export const Providers = () => {
                                     })()}
                                   </div>
                                 )}
-                              {mCfg.type === 'embeddings' && (
+                              {(mCfg.type === 'embeddings' || mCfg.type === 'rerank') && (
                                 <div className="flex flex-col gap-1">
                                   <div
                                     style={{
@@ -2892,7 +2901,9 @@ export const Providers = () => {
                                     }}
                                   >
                                     <Info className="inline w-3 h-3 mb-0.5 mr-1" />
-                                    Embeddings models automatically use the 'embeddings' API only.
+                                    {mCfg.type === 'embeddings'
+                                      ? "Embeddings models automatically use the 'embeddings' API only."
+                                      : "Rerank models automatically use the 'rerank' API only."}
                                   </div>
                                 </div>
                               )}

@@ -9,6 +9,7 @@ import { registerChatRoute } from './chat';
 import { registerMessagesRoute } from './messages';
 import { registerGeminiRoute } from './gemini';
 import { registerEmbeddingsRoute } from './embeddings';
+import { registerRerankRoute } from './rerank';
 import { registerTranscriptionsRoute } from './transcriptions';
 import { registerSpeechRoute } from './speech';
 import { registerImagesRoute } from './images';
@@ -36,6 +37,7 @@ export async function registerInferenceRoutes(
     await registerGeminiRoute(protectedRoutes, dispatcher, usageStorage, quotaEnforcer);
     await registerResponsesRoute(protectedRoutes, dispatcher, usageStorage, quotaEnforcer);
     await registerEmbeddingsRoute(protectedRoutes, dispatcher, usageStorage);
+    await registerRerankRoute(protectedRoutes, dispatcher, usageStorage);
     await registerTranscriptionsRoute(protectedRoutes, dispatcher, usageStorage);
     await registerSpeechRoute(protectedRoutes, dispatcher, usageStorage);
     await registerImagesRoute(protectedRoutes, dispatcher, usageStorage);

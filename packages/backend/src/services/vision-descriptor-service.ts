@@ -23,16 +23,16 @@ class VisionDescriptionCache {
   private maxSize = 1000;
   private ttlMs = 60 * 60 * 1000;
 
-  private async hashUrl(url: string): Promise<string> {
+  private async hashUrl(url: string, model: string, prompt: string): Promise<string> {
     const encoder = new TextEncoder();
-    const data = encoder.encode(url);
+    const data = encoder.encode(url + model + prompt);
     const hashBuffer = await crypto.subtle.digest('SHA-256', data);
     const hashArray = Array.from(new Uint8Array(hashBuffer));
     return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
   }
 
-  async get(url: string): Promise<string | null> {
-    const hash = await this.hashUrl(url);
+  async get(url: string, model: string, prompt: string): Promise<string | null> {
+    const hash = await this.hashUrl(url, model, prompt);
     const entry = this.cache.get(hash);
     if (!entry) return null;
     if (Date.now() - entry.timestamp > this.ttlMs) {
@@ -42,12 +42,12 @@ class VisionDescriptionCache {
     return entry.description;
   }
 
-  async set(url: string, description: string): Promise<void> {
+  async set(url: string, model: string, prompt: string, description: string): Promise<void> {
     if (this.cache.size >= this.maxSize) {
       const oldestKey = this.cache.keys().next().value;
       if (oldestKey) this.cache.delete(oldestKey);
     }
-    const hash = await this.hashUrl(url);
+    const hash = await this.hashUrl(url, model, prompt);
     this.cache.set(hash, { description, timestamp: Date.now() });
   }
 
@@ -154,7 +154,7 @@ export class VisionDescriptorService {
     usageStorage?: UsageStorageService,
     parentRequest?: UnifiedChatRequest
   ): Promise<string> {
-    const cached = await visionCache.get(url);
+    const cached = await visionCache.get(url, model, prompt);
     if (cached) {
       logger.debug(`[vision-fallthrough] Cache hit for image (hash)`);
       return cached;
@@ -260,7 +260,7 @@ export class VisionDescriptorService {
       }
 
       logger.debug(`[vision-fallthrough] Received description (${description.length} chars)`);
-      await visionCache.set(url, description);
+      await visionCache.set(url, model, prompt, description);
       return description;
     } catch (error) {
       logger.error(`[vision-fallthrough] Error describing image with ${model}:`, error);

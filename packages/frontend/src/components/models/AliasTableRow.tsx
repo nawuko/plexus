@@ -127,6 +127,7 @@ export const AliasTableRow: React.FC<AliasTableRowProps> = ({
                     if (!isDisabled) {
                       let testApiTypes: string[] = ['chat'];
                       if (alias.type === 'embeddings') testApiTypes = ['embeddings'];
+                      else if (alias.type === 'rerank') testApiTypes = ['rerank'];
                       else if (alias.type === 'image') testApiTypes = ['images'];
                       else if (alias.type === 'responses') testApiTypes = ['responses'];
 

@@ -69,7 +69,9 @@ const ModelProviderConfigSchema = z.object({
     output: 0,
   }),
   access_via: z.array(z.string()).optional(),
-  type: z.enum(['chat', 'responses', 'embeddings', 'transcriptions', 'speech', 'image']).optional(),
+  type: z
+    .enum(['chat', 'responses', 'embeddings', 'rerank', 'transcriptions', 'speech', 'image'])
+    .optional(),
   extraBody: z.record(z.string(), z.any()).optional(),
 });
 
@@ -502,7 +504,9 @@ export const ModelConfigSchema = z.object({
   additional_aliases: z.array(z.string()).optional(),
   use_image_fallthrough: z.boolean().default(false).optional(),
   enforce_limits: z.boolean().default(false).optional(),
-  type: z.enum(['chat', 'responses', 'embeddings', 'transcriptions', 'speech', 'image']).optional(),
+  type: z
+    .enum(['chat', 'responses', 'embeddings', 'rerank', 'transcriptions', 'speech', 'image'])
+    .optional(),
   advanced: z.array(ModelBehaviorSchema).optional(),
   metadata: ModelMetadataSchema.optional(),
   // Model architecture override for inference energy calculation
