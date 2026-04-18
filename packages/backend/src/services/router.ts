@@ -162,33 +162,36 @@ async function filterGroupTargets(
 
   if (healthyTargets.length === 0) return [];
 
-  // 3. Embeddings type filter
-  if (incomingApiType === 'embeddings') {
-    const embeddingsTargets = healthyTargets.filter((target) => {
+  // 3. Specialized API type filter
+  if (incomingApiType === 'embeddings' || incomingApiType === 'rerank') {
+    const requestedType = incomingApiType;
+    const filteredTargets = healthyTargets.filter((target) => {
       const providerConfig = config.providers[target.provider];
       if (!providerConfig) return false;
 
       if (!Array.isArray(providerConfig.models) && providerConfig.models) {
         const modelConfig = providerConfig.models[target.model];
-        if (modelConfig?.type === 'embeddings') return true;
+        if (modelConfig?.type === requestedType) return true;
         if (modelConfig?.type === 'text') return false;
       }
 
-      if (alias.type === 'embeddings') return true;
+      if (alias.type === requestedType) return true;
       const providerTypes = getProviderTypes(providerConfig);
-      return providerTypes.includes('embeddings') || providerTypes.includes('gemini');
+      return requestedType === 'embeddings'
+        ? providerTypes.includes('embeddings') || providerTypes.includes('gemini')
+        : providerTypes.includes(requestedType);
     });
 
-    if (embeddingsTargets.length > 0) {
+    if (filteredTargets.length > 0) {
       if (logModelName) {
         logger.info(
-          `Router: Filtered to ${embeddingsTargets.length} embeddings-compatible targets (from ${healthyTargets.length} total).`
+          `Router: Filtered to ${filteredTargets.length} ${requestedType}-compatible targets (from ${healthyTargets.length} total).`
         );
       }
-      healthyTargets = embeddingsTargets;
+      healthyTargets = filteredTargets;
     } else if (logModelName) {
       logger.warn(
-        `Router: No embeddings-compatible targets found for '${logModelName}'. Falling back to all healthy targets.`
+        `Router: No ${requestedType}-compatible targets found for '${logModelName}'. Falling back to all healthy targets.`
       );
     }
   }

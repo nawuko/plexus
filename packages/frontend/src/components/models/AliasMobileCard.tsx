@@ -163,6 +163,7 @@ export const AliasMobileCard: React.FC<Props> = ({
                           if (isDisabled) return;
                           let testApiTypes: string[] = ['chat'];
                           if (alias.type === 'embeddings') testApiTypes = ['embeddings'];
+                          else if (alias.type === 'rerank') testApiTypes = ['rerank'];
                           else if (alias.type === 'image') testApiTypes = ['images'];
 
                           onTestTarget(

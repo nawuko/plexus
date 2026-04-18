@@ -17,11 +17,11 @@ import { DEFAULT_GPU_PARAMS, DEFAULT_MODEL } from '@plexus/shared';
 const DESCRIPTION_CACHE_MAX = 500;
 
 export class VisionDescriptorService {
-  // LRU cache: key = "<model>:<sha256(imageUrl)>", value = description string
+  // LRU cache: key = "<model>:<sha256(imageUrl + prompt)>", value = description string
   private static readonly _cache = new Map<string, string>();
 
-  private static _cacheKey(imageUrl: string, model: string): string {
-    const hash = crypto.createHash('sha256').update(imageUrl).digest('hex');
+  private static _cacheKey(imageUrl: string, model: string, prompt: string): string {
+    const hash = crypto.createHash('sha256').update(imageUrl + prompt).digest('hex');
     return `${model}:${hash}`;
   }
 
@@ -134,7 +134,7 @@ export class VisionDescriptorService {
     usageStorage?: UsageStorageService,
     parentRequest?: UnifiedChatRequest
   ): Promise<string> {
-    const cacheKey = VisionDescriptorService._cacheKey(url, model);
+    const cacheKey = VisionDescriptorService._cacheKey(url, model, prompt);
     const cached = VisionDescriptorService._cacheGet(cacheKey);
     if (cached !== undefined) {
       logger.debug(`Vision descriptor cache hit for model '${model}'`);

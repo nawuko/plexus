@@ -71,6 +71,7 @@ export const AliasTableRow: React.FC<AliasTableRowProps> = ({
                 (
                   {
                     embeddings: 'text-success',
+                    rerank: 'text-success',
                     transcriptions: 'text-purple-400',
                     speech: 'text-orange-400',
                     image: 'text-pink-400',
@@ -161,6 +162,7 @@ export const AliasTableRow: React.FC<AliasTableRowProps> = ({
                             if (!isDisabled) {
                               let testApiTypes: string[] = ['chat'];
                               if (alias.type === 'embeddings') testApiTypes = ['embeddings'];
+                              else if (alias.type === 'rerank') testApiTypes = ['rerank'];
                               else if (alias.type === 'image') testApiTypes = ['images'];
 
                               onTestTarget(alias.id, testKey, t.provider, t.model, testApiTypes);

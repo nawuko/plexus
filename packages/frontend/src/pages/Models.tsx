@@ -31,6 +31,7 @@ type ModelTypeGroup = {
 const MODEL_TYPE_GROUPS: ModelTypeGroup[] = [
   { type: 'text', label: 'Text', defaultOpen: true },
   { type: 'embeddings', label: 'Embeddings', defaultOpen: false },
+  { type: 'rerank', label: 'Rerank', defaultOpen: false },
   { type: 'transcriptions', label: 'Transcriptions', defaultOpen: false },
   { type: 'speech', label: 'Speech', defaultOpen: false },
   { type: 'image', label: 'Image', defaultOpen: false },
@@ -326,6 +327,7 @@ export const Models = () => {
                       type: e.target.value as
                         | 'text'
                         | 'embeddings'
+                        | 'rerank'
                         | 'transcriptions'
                         | 'speech'
                         | 'image',
@@ -334,6 +336,7 @@ export const Models = () => {
                 >
                   <option value="text">Text</option>
                   <option value="embeddings">Embeddings</option>
+                  <option value="rerank">Rerank</option>
                   <option value="transcriptions">Transcriptions</option>
                   <option value="speech">Speech</option>
                   <option value="image">Image</option>

@@ -11,6 +11,7 @@ const KNOWN_APIS = [
   'messages',
   'gemini',
   'embeddings',
+  'rerank',
   'transcriptions',
   'speech',
   'images',
@@ -376,6 +377,7 @@ export function useProviderForm() {
     }));
     let testApiTypes: string[] = ['chat'];
     if (modelType === 'embeddings') testApiTypes = ['embeddings'];
+    else if (modelType === 'rerank') testApiTypes = ['rerank'];
     else if (modelType === 'image') testApiTypes = ['images'];
     else if (modelType === 'responses') testApiTypes = ['responses'];
     else if (modelType === 'transcriptions') testApiTypes = ['transcriptions'];

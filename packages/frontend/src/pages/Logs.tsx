@@ -890,7 +890,8 @@ export const Logs = () => {
                         <div className="min-w-0 rounded bg-bg-subtle px-1.5 py-1">
                           <div className="flex items-center gap-1 text-text">
                             <div className="flex w-4 shrink-0 justify-center">
-                              {log.incomingApiType === 'embeddings' ? (
+                              {log.incomingApiType === 'embeddings' ||
+                              log.incomingApiType === 'rerank' ? (
                                 <Variable size={14} className="text-green-500" />
                               ) : log.incomingApiType === 'transcriptions' ? (
                                 <AudioLines size={14} className="text-purple-500" />
@@ -912,7 +913,8 @@ export const Logs = () => {
                             </div>
                             <span className="text-[10px] text-text-muted">→</span>
                             <div className="flex w-4 shrink-0 justify-center">
-                              {log.outgoingApiType === 'embeddings' ? (
+                              {log.outgoingApiType === 'embeddings' ||
+                              log.outgoingApiType === 'rerank' ? (
                                 <Variable size={14} className="text-green-500" />
                               ) : log.outgoingApiType === 'transcriptions' ? (
                                 <AudioLines size={14} className="text-purple-500" />
@@ -1123,7 +1125,8 @@ export const Logs = () => {
                             <div
                               style={{ width: '16px', display: 'flex', justifyContent: 'center' }}
                             >
-                              {log.incomingApiType === 'embeddings' ? (
+                              {log.incomingApiType === 'embeddings' ||
+                              log.incomingApiType === 'rerank' ? (
                                 <Variable size={16} className="text-green-500" />
                               ) : log.incomingApiType === 'transcriptions' ? (
                                 <AudioLines size={16} className="text-purple-500" />
@@ -1147,7 +1150,8 @@ export const Logs = () => {
                             <div
                               style={{ width: '16px', display: 'flex', justifyContent: 'center' }}
                             >
-                              {log.outgoingApiType === 'embeddings' ? (
+                              {log.outgoingApiType === 'embeddings' ||
+                              log.outgoingApiType === 'rerank' ? (
                                 <Variable size={16} className="text-green-500" />
                               ) : log.outgoingApiType === 'transcriptions' ? (
                                 <AudioLines size={16} className="text-purple-500" />

@@ -9,6 +9,8 @@ import {
   UnifiedImageGenerationResponse,
   UnifiedImageEditRequest,
   UnifiedImageEditResponse,
+  UnifiedRerankRequest,
+  UnifiedRerankResponse,
   KeyAccessPolicy,
 } from '../types/unified';
 import { Router } from './router';
@@ -3175,6 +3177,195 @@ export class Dispatcher {
     this.enrichResponseWithMetadata(unifiedResponse, route, targetApiType);
 
     return unifiedResponse;
+  }
+
+  /**
+   * Dispatch rerank request to provider.
+   */
+  async dispatchRerank(request: UnifiedRerankRequest): Promise<UnifiedRerankResponse> {
+    const { RerankTransformer } = await import('../transformers/rerank');
+    const transformer = new RerankTransformer();
+    const config = getConfig();
+    const failover = config.failover;
+    const failoverEnabled = failover?.enabled !== false;
+
+    let candidates = await Router.resolveCandidates(request.model, 'rerank');
+    if (candidates.length === 0) {
+      const singleRoute = await Router.resolve(request.model, 'rerank');
+      candidates = [singleRoute];
+    }
+
+    candidates = this.applyKeyAccessPolicy(request, candidates, 'rerank');
+
+    const targets = failoverEnabled ? candidates : [candidates[0]!];
+    const attemptedProviders: string[] = [];
+    const retryHistory: RetryAttemptRecord[] = [];
+    let lastError: any = null;
+
+    for (let i = 0; i < targets.length; i++) {
+      const route = targets[i]!;
+
+      const isHealthy = await CooldownManager.getInstance().isProviderHealthy(
+        route.provider,
+        route.model
+      );
+      if (!isHealthy) {
+        logger.warn(`Skipping ${route.provider}/${route.model} - provider is on cooldown`);
+        lastError = new Error(`Provider ${route.provider}/${route.model} is on cooldown`);
+        this.appendSkippedAttempt(
+          retryHistory,
+          route,
+          `Provider ${route.provider}/${route.model} is on cooldown`,
+          'rerank'
+        );
+        continue;
+      }
+
+      attemptedProviders.push(`${route.provider}/${route.model}`);
+
+      try {
+        const baseUrl = this.resolveBaseUrl(route, 'rerank');
+        const url = `${baseUrl}/rerank`;
+
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        };
+
+        if (route.config.api_key) {
+          headers['Authorization'] = `Bearer ${route.config.api_key}`;
+        }
+
+        if (route.config.headers) {
+          Object.assign(headers, route.config.headers);
+        }
+
+        const payload = {
+          ...(await transformer.transformRequest(request)),
+          ...request.originalBody,
+          model: route.model,
+          return_documents: false,
+        };
+
+        if (route.config.extraBody) {
+          Object.assign(payload, route.config.extraBody);
+        }
+
+        logger.info(`Dispatching rerank ${request.model} to ${route.provider}:${route.model}`);
+        logger.silly('Rerank Request Payload', payload);
+
+        if (request.requestId) {
+          DebugManager.getInstance().addTransformedRequest(request.requestId, payload);
+        }
+
+        const response = await this.executeProviderRequest(url, headers, payload);
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          logger.error(`Rerank request failed: ${url}`, {
+            status: response.status,
+            error: errorText,
+          });
+          const canRetry =
+            failoverEnabled &&
+            i < targets.length - 1 &&
+            this.isRetryableStatus(response.status, failover?.retryableStatusCodes || []);
+
+          try {
+            await this.handleProviderError(
+              response,
+              route,
+              errorText,
+              url,
+              headers,
+              'rerank',
+              request.requestId
+            );
+          } catch (e: any) {
+            lastError = e;
+            this.appendFailureAttempt(retryHistory, route, e, 'rerank', canRetry);
+            if (canRetry) {
+              await this.recordAttemptMetric(route, request.requestId, false);
+              if (e?.routingContext?.cooldownTriggered) {
+                CooldownManager.getInstance().markProviderFailure(
+                  route.provider,
+                  route.model,
+                  undefined,
+                  this.formatFailureReason(e, true)
+                );
+              }
+              logger.warn(
+                `Failover: retrying rerank after HTTP ${response.status} from ${route.provider}/${route.model}`
+              );
+              continue;
+            }
+            throw e;
+          }
+        }
+
+        const responseBody = await response.json();
+        logger.silly('Rerank Response Payload', responseBody);
+
+        if (request.requestId) {
+          DebugManager.getInstance().addRawResponse(request.requestId, responseBody);
+        }
+
+        const unifiedResponse = await transformer.transformResponse(responseBody);
+        const enrichedResponse: UnifiedRerankResponse = {
+          ...unifiedResponse,
+          plexus: {
+            provider: route.provider,
+            model: route.model,
+            apiType: 'rerank',
+            pricing: route.modelConfig?.pricing,
+            providerDiscount: route.config.discount,
+            canonicalModel: route.canonicalModel,
+            config: route.config,
+          },
+          rawResponse: responseBody,
+        };
+
+        await this.recordAttemptMetric(route, request.requestId, true);
+        this.appendSuccessAttempt(retryHistory, route, 'rerank');
+        this.attachAttemptMetadata(
+          enrichedResponse,
+          attemptedProviders,
+          retryHistory,
+          route,
+          'rerank'
+        );
+        return enrichedResponse;
+      } catch (error: any) {
+        lastError = error;
+        if (error?.routingContext?.statusCode === undefined) {
+          CooldownManager.getInstance().markProviderFailure(
+            route.provider,
+            route.model,
+            undefined,
+            this.formatFailureReason(error)
+          );
+        }
+        await this.recordAttemptMetric(route, request.requestId, false);
+
+        const canRetryNetwork =
+          failoverEnabled &&
+          i < targets.length - 1 &&
+          this.isRetryableNetworkError(error, failover?.retryableErrors || []);
+
+        this.appendFailureAttempt(retryHistory, route, error, 'rerank', canRetryNetwork);
+
+        if (canRetryNetwork) {
+          logger.warn(
+            `Failover: retrying rerank after network/transport error from ${route.provider}/${route.model}: ${error.message}`
+          );
+          continue;
+        }
+
+        throw this.buildAllTargetsFailedError(lastError, attemptedProviders, retryHistory);
+      }
+    }
+
+    throw this.buildAllTargetsFailedError(lastError, attemptedProviders, retryHistory);
   }
 
   /**

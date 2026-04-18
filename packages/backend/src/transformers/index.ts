@@ -4,6 +4,7 @@ export * from './gemini';
 export * from './ollama';
 export * from './responses';
 export * from './embeddings';
+export * from './rerank';
 export * from './transcriptions';
 export * from './speech';
 export * from './image';

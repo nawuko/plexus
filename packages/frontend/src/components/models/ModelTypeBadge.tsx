@@ -16,6 +16,7 @@ export const ModelTypeBadge: React.FC<ModelTypeBadgeProps> = ({ type, className 
 
   switch (type) {
     case 'embeddings':
+    case 'rerank':
       status = 'connected'; // green
       break;
     case 'transcriptions':

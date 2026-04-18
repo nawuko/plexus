@@ -9,6 +9,7 @@ const KNOWN_APIS = [
   'messages',
   'gemini',
   'embeddings',
+  'rerank',
   'transcriptions',
   'speech',
   'images',

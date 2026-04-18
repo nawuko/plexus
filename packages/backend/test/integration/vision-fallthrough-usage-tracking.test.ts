@@ -216,7 +216,7 @@ describe('VisionDescriptorService: child request usage logging', () => {
     await VisionDescriptorService.process(
       request as any,
       'gpt-4o',
-      'Describe this image.',
+      'Describe this image - child request',
       mockStorage
     );
 
@@ -242,7 +242,7 @@ describe('VisionDescriptorService: child request usage logging', () => {
     await VisionDescriptorService.process(
       makeRequest() as any,
       'gpt-4o',
-      'Describe this.',
+      'Describe this - model and provider',
       mockStorage
     );
 
@@ -263,8 +263,8 @@ describe('VisionDescriptorService: child request usage logging', () => {
 
     await VisionDescriptorService.process(
       makeRequest() as any,
-      'gpt-4o',
-      'Describe this.',
+      'gpt-4o-1',
+      'Describe this - token count',
       mockStorage
     );
 
@@ -288,7 +288,7 @@ describe('VisionDescriptorService: child request usage logging', () => {
     await VisionDescriptorService.process(
       makeRequest() as any,
       'gpt-4o',
-      'Describe this.',
+      'Describe this - error status',
       mockStorage
     );
 

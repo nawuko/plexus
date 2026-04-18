@@ -20,6 +20,7 @@ export type ProbeApiType =
   | 'gemini'
   | 'responses'
   | 'embeddings'
+  | 'rerank'
   | 'images'
   | 'speech'
   | 'oauth';
@@ -74,6 +75,13 @@ function buildSecondaryRequest(apiType: ProbeApiType, modelPath: string): any {
       };
     case 'embeddings':
       return { model: modelPath, input: ['Hello world'] };
+    case 'rerank':
+      return {
+        model: modelPath,
+        query: 'Hello',
+        documents: ['Hello world', 'Goodbye world'],
+        return_documents: false,
+      };
     case 'images':
       return {
         model: modelPath,
@@ -178,6 +186,14 @@ export class ProbeService {
           requestId,
           incomingApiType: 'embeddings',
         });
+      } else if (apiType === 'rerank') {
+        const { RerankTransformer } = await import('../transformers/rerank');
+        const transformer = new RerankTransformer();
+        const unifiedRequest = await transformer.parseRequest(testRequest);
+        unifiedRequest.incomingApiType = 'rerank';
+        unifiedRequest.originalBody = testRequest;
+        unifiedRequest.requestId = requestId;
+        response = await this.dispatcher.dispatchRerank(unifiedRequest);
       } else if (apiType === 'images') {
         const imgReq = testRequest as {
           model: string;
@@ -300,6 +316,11 @@ export class ProbeService {
         responseText =
           response.data && Array.isArray(response.data)
             ? `Success (${response.data.length} embedding${response.data.length > 1 ? 's' : ''})`
+            : 'Success';
+      } else if (apiType === 'rerank') {
+        responseText =
+          response.results && Array.isArray(response.results)
+            ? `Success (${response.results.length} rerank result${response.results.length > 1 ? 's' : ''})`
             : 'Success';
       } else {
         responseText = response.content

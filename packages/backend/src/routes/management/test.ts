@@ -9,6 +9,7 @@ const VALID_API_TYPES: ProbeApiType[] = [
   'gemini',
   'responses',
   'embeddings',
+  'rerank',
   'images',
   'speech',
   'oauth',

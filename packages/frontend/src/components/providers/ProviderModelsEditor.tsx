@@ -31,6 +31,7 @@ const getApiBadgeStyle = (apiType: string): React.CSSProperties => {
     case 'gemini':
       return { backgroundColor: '#5084ff', color: 'white', border: 'none' };
     case 'embeddings':
+    case 'rerank':
       return { backgroundColor: '#10b981', color: 'white', border: 'none' };
     case 'transcriptions':
       return { backgroundColor: '#a855f7', color: 'white', border: 'none' };
@@ -325,13 +326,14 @@ export function ProviderModelsEditor({
                                 const newType = e.target.value as
                                   | 'text'
                                   | 'embeddings'
+                                  | 'rerank'
                                   | 'transcriptions'
                                   | 'speech'
                                   | 'image';
-                                if (newType === 'embeddings')
+                                if (newType === 'embeddings' || newType === 'rerank')
                                   updateModelConfig(mId, {
                                     type: newType,
-                                    access_via: ['embeddings'],
+                                    access_via: [newType],
                                   });
                                 else if (newType === 'transcriptions')
                                   updateModelConfig(mId, {
@@ -347,6 +349,7 @@ export function ProviderModelsEditor({
                             >
                               <option value="text">Text</option>
                               <option value="embeddings">Embeddings</option>
+                              <option value="rerank">Rerank</option>
                               <option value="transcriptions">Transcriptions</option>
                               <option value="speech">Speech</option>
                               <option value="image">Image</option>

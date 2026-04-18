@@ -321,7 +321,7 @@ export interface Model {
   name: string;
   providerId: string;
   pricingSource?: string;
-  type?: 'text' | 'embeddings' | 'transcriptions' | 'speech' | 'image';
+  type?: 'text' | 'embeddings' | 'rerank' | 'transcriptions' | 'speech' | 'image';
 }
 
 // ─── Alias advanced behaviors ────────────────────────────────
@@ -436,7 +436,7 @@ export interface Alias {
   id: string;
   aliases?: string[];
   priority?: 'selector' | 'api_match';
-  type?: 'text' | 'embeddings' | 'transcriptions' | 'speech' | 'image';
+  type?: 'text' | 'embeddings' | 'rerank' | 'transcriptions' | 'speech' | 'image';
   target_groups: AliasTargetGroup[];
   advanced?: AliasBehavior[];
   metadata?: AliasMetadata;
