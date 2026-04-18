@@ -10,28 +10,33 @@ const fetchMock: any = vi.fn(async (): Promise<any> => {
 
 global.fetch = fetchMock as any;
 
-function makeConfig(options?: { failoverEnabled?: boolean; targetCount?: number }) {
+function makeConfig(options?: {
+  failoverEnabled?: boolean;
+  targetCount?: number;
+  rerank?: boolean;
+}) {
   const failoverEnabled = options?.failoverEnabled ?? true;
   const targetCount = options?.targetCount ?? 2;
+  const rerank = options?.rerank ?? false;
 
   const providers: Record<string, any> = {
     p1: {
-      type: 'chat',
-      api_base_url: 'https://p1.example.com/v1',
+      type: rerank ? 'rerank' : 'chat',
+      api_base_url: rerank ? { rerank: 'https://p1.example.com/v1' } : 'https://p1.example.com/v1',
       api_key: 'test-key-p1',
-      models: { 'model-1': {} },
+      models: { 'model-1': rerank ? { type: 'rerank' } : {} },
     },
     p2: {
-      type: 'chat',
-      api_base_url: 'https://p2.example.com/v1',
+      type: rerank ? 'rerank' : 'chat',
+      api_base_url: rerank ? { rerank: 'https://p2.example.com/v1' } : 'https://p2.example.com/v1',
       api_key: 'test-key-p2',
-      models: { 'model-2': {} },
+      models: { 'model-2': rerank ? { type: 'rerank' } : {} },
     },
     p3: {
-      type: 'chat',
-      api_base_url: 'https://p3.example.com/v1',
+      type: rerank ? 'rerank' : 'chat',
+      api_base_url: rerank ? { rerank: 'https://p3.example.com/v1' } : 'https://p3.example.com/v1',
       api_key: 'test-key-p3',
-      models: { 'model-3': {} },
+      models: { 'model-3': rerank ? { type: 'rerank' } : {} },
     },
   };
 
@@ -46,6 +51,7 @@ function makeConfig(options?: { failoverEnabled?: boolean; targetCount?: number 
     models: {
       'test-alias': {
         selector: 'in_order',
+        ...(rerank ? { type: 'rerank' } : {}),
         targets: orderedTargets,
       },
     },
@@ -371,6 +377,43 @@ describe('Dispatcher Failover', () => {
     expect(meta?.attemptCount).toBe(2);
     expect(meta?.finalAttemptProvider).toBe('p2');
     expect(response.data?.[0]?.embedding).toEqual([0.1, 0.2]);
+  });
+
+  test('rerank failover normalizes data response', async () => {
+    setConfigForTesting(makeConfig({ targetCount: 2, rerank: true }));
+    fetchMock
+      .mockImplementationOnce(async () => errorResponse(500, 'rerank failed on p1'))
+      .mockImplementationOnce(
+        async () =>
+          new Response(
+            JSON.stringify({
+              object: 'list',
+              model: 'model-2',
+              data: [
+                { index: 1, relevance_score: 0.9 },
+                { index: 0, relevance_score: 0.1 },
+              ],
+              usage: { prompt_tokens: 2, total_tokens: 2 },
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+          )
+      );
+
+    const dispatcher = new Dispatcher();
+    const response = await dispatcher.dispatchRerank({
+      model: 'test-alias',
+      query: 'hello',
+      documents: ['a', 'b'],
+      originalBody: { query: 'hello', documents: ['a', 'b'] },
+    } as any);
+    const meta = (response as any).plexus;
+
+    expect(meta?.attemptCount).toBe(2);
+    expect(meta?.finalAttemptProvider).toBe('p2');
+    expect(response.results).toEqual([
+      { index: 1, score: 0.9 },
+      { index: 0, score: 0.1 },
+    ]);
   });
 
   test('non-retryable 413 (Payload Too Large) does NOT failover', async () => {

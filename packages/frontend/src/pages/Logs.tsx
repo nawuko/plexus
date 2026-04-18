@@ -566,7 +566,8 @@ export const Logs = () => {
                         {/* API type icons */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
                           <div style={{ width: '16px', display: 'flex', justifyContent: 'center' }}>
-                            {log.incomingApiType === 'embeddings' ? (
+                            {log.incomingApiType === 'embeddings' ||
+                            log.incomingApiType === 'rerank' ? (
                               <Variable size={16} className="text-green-500" />
                             ) : log.incomingApiType === 'transcriptions' ? (
                               <AudioLines size={16} className="text-purple-500" />
@@ -590,7 +591,8 @@ export const Logs = () => {
                           </div>
                           <span style={{ width: '14px', textAlign: 'center' }}>→</span>
                           <div style={{ width: '16px', display: 'flex', justifyContent: 'center' }}>
-                            {log.outgoingApiType === 'embeddings' ? (
+                            {log.outgoingApiType === 'embeddings' ||
+                            log.outgoingApiType === 'rerank' ? (
                               <Variable size={16} className="text-green-500" />
                             ) : log.outgoingApiType === 'transcriptions' ? (
                               <AudioLines size={16} className="text-purple-500" />

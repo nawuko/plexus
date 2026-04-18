@@ -1056,6 +1056,7 @@ export const Models = () => {
                     type: e.target.value as
                       | 'chat'
                       | 'embeddings'
+                      | 'rerank'
                       | 'transcriptions'
                       | 'speech'
                       | 'image'
@@ -1065,6 +1066,7 @@ export const Models = () => {
               >
                 <option value="chat">Chat</option>
                 <option value="embeddings">Embeddings</option>
+                <option value="rerank">Rerank</option>
                 <option value="transcriptions">Transcriptions</option>
                 <option value="speech">Speech</option>
                 <option value="image">Image</option>

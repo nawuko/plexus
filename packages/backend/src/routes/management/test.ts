@@ -8,6 +8,7 @@ import {
   ResponsesTransformer,
   EmbeddingsTransformer,
   ImageTransformer,
+  RerankTransformer,
   SpeechTransformer,
 } from '../../transformers';
 
@@ -66,6 +67,13 @@ const TEST_TEMPLATES = {
   embeddings: (modelPath: string) => ({
     model: modelPath,
     input: ['Hello world'],
+  }),
+
+  rerank: (modelPath: string) => ({
+    model: modelPath,
+    query: 'Hello',
+    documents: ['Hello world', 'Goodbye world'],
+    return_documents: false,
   }),
 
   images: (modelPath: string) => ({
@@ -131,6 +139,7 @@ export async function registerTestRoutes(fastify: FastifyInstance, dispatcher: D
           'gemini',
           'responses',
           'embeddings',
+          'rerank',
           'images',
           'transcriptions',
           'speech',
@@ -139,7 +148,7 @@ export async function registerTestRoutes(fastify: FastifyInstance, dispatcher: D
       ) {
         return reply.code(400).send({
           success: false,
-          error: `Invalid API type: ${apiType}. Must be one of: chat, messages, gemini, responses, embeddings, images, transcriptions, speech, oauth`,
+          error: `Invalid API type: ${apiType}. Must be one of: chat, messages, gemini, responses, embeddings, rerank, images, transcriptions, speech, oauth`,
         });
       }
 
@@ -151,8 +160,11 @@ export async function registerTestRoutes(fastify: FastifyInstance, dispatcher: D
       const testRequest = TEST_TEMPLATES[apiType as keyof typeof TEST_TEMPLATES](directModelPath);
 
       logger.info('Creating transformer...');
-      let dispatchMethod: 'dispatch' | 'dispatchEmbeddings' | 'dispatchImageGenerations' =
-        'dispatch';
+      let dispatchMethod:
+        | 'dispatch'
+        | 'dispatchEmbeddings'
+        | 'dispatchRerank'
+        | 'dispatchImageGenerations' = 'dispatch';
       let imageRequestData: {
         model: string;
         prompt: string;
@@ -173,6 +185,9 @@ export async function registerTestRoutes(fastify: FastifyInstance, dispatcher: D
           break;
         case 'embeddings':
           dispatchMethod = 'dispatchEmbeddings';
+          break;
+        case 'rerank':
+          dispatchMethod = 'dispatchRerank';
           break;
         case 'images':
           dispatchMethod = 'dispatchImageGenerations';
@@ -238,6 +253,13 @@ export async function registerTestRoutes(fastify: FastifyInstance, dispatcher: D
           requestId,
           incomingApiType: 'embeddings',
         });
+      } else if (dispatchMethod === 'dispatchRerank') {
+        const transformer = new RerankTransformer();
+        const unifiedRequest = await transformer.parseRequest(testRequest);
+        unifiedRequest.incomingApiType = 'rerank';
+        unifiedRequest.originalBody = testRequest;
+        unifiedRequest.requestId = requestId;
+        response = await dispatcher.dispatchRerank(unifiedRequest);
       } else if (dispatchMethod === 'dispatchImageGenerations' && imageRequestData) {
         response = await dispatcher.dispatchImageGenerations({
           ...imageRequestData,
@@ -294,6 +316,11 @@ export async function registerTestRoutes(fastify: FastifyInstance, dispatcher: D
         responseText =
           response.data && Array.isArray(response.data)
             ? `Success (${response.data.length} embedding${response.data.length > 1 ? 's' : ''})`
+            : 'Success';
+      } else if (apiType === 'rerank') {
+        responseText =
+          response.results && Array.isArray(response.results)
+            ? `Success (${response.results.length} rerank result${response.results.length > 1 ? 's' : ''})`
             : 'Success';
       } else {
         responseText = response.content

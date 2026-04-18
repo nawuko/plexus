@@ -288,7 +288,7 @@ export interface Model {
   name: string;
   providerId: string;
   pricingSource?: string;
-  type?: 'chat' | 'embeddings' | 'transcriptions' | 'speech' | 'image' | 'responses';
+  type?: 'chat' | 'embeddings' | 'rerank' | 'transcriptions' | 'speech' | 'image' | 'responses';
 }
 
 // ─── Alias advanced behaviors ────────────────────────────────
@@ -374,7 +374,7 @@ export interface Alias {
   aliases?: string[];
   selector?: string;
   priority?: 'selector' | 'api_match';
-  type?: 'chat' | 'embeddings' | 'transcriptions' | 'speech' | 'image' | 'responses';
+  type?: 'chat' | 'embeddings' | 'rerank' | 'transcriptions' | 'speech' | 'image' | 'responses';
   targets: Array<{ provider: string; model: string; apiType?: string[]; enabled?: boolean }>;
   advanced?: AliasBehavior[];
   metadata?: AliasMetadata;

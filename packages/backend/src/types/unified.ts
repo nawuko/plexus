@@ -286,6 +286,43 @@ export interface UnifiedEmbeddingsResponse {
   rawResponse?: any;
 }
 
+// Unified Rerank Request
+export interface UnifiedRerankRequest {
+  requestId?: string;
+  model: string;
+  query: string;
+  documents: string[];
+  top_n?: number;
+  return_documents?: boolean;
+  incomingApiType?: string;
+  originalBody?: any;
+  metadata?: Record<string, any> & { plexus_key_policy?: KeyAccessPolicy };
+}
+
+// Unified Rerank Response
+export interface UnifiedRerankResponse {
+  results: Array<{
+    index: number;
+    score: number;
+  }>;
+  id?: string;
+  model?: string;
+  usage?: {
+    prompt_tokens?: number;
+    total_tokens?: number;
+  };
+  plexus?: {
+    provider?: string;
+    model?: string;
+    apiType?: string;
+    pricing?: any;
+    providerDiscount?: number;
+    canonicalModel?: string;
+    config?: any;
+  };
+  rawResponse?: any;
+}
+
 // Unified Transcription Request
 export interface UnifiedTranscriptionRequest {
   requestId?: string;
