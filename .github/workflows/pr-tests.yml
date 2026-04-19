@@ -1,14 +1,17 @@
 name: PR Tests
-run-name: "Tests: ${{ github.event.pull_request.title }}"
+run-name: "PR: ${{ github.event.pull_request.title }}"
 
 on:
   pull_request_target:
     types: [opened, synchronize, ready_for_review, reopened]
 
+permissions:
+  contents: read
+
 jobs:
   test:
+    name: Run Tests
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -31,3 +34,5 @@ jobs:
 
       - name: Run backend tests
         run: cd packages/backend && bun run test
+
+
