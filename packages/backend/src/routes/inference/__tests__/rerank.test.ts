@@ -1,10 +1,9 @@
-import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import Fastify, { FastifyInstance } from 'fastify';
 import { setConfigForTesting } from '../../../config';
 import { registerInferenceRoutes } from '../index';
 import { Dispatcher } from '../../../services/dispatcher';
 import { UsageStorageService } from '../../../services/usage-storage';
-import { mock } from 'bun:test';
 import { DebugManager } from '../../../services/debug-manager';
 import { SelectorFactory } from '../../../services/selectors/factory';
 
@@ -54,9 +53,9 @@ describe('Rerank Endpoint', () => {
     fastify = Fastify();
 
     mockDispatcher = {
-      dispatch: mock(async () => ({})),
-      dispatchEmbeddings: mock(async () => ({})),
-      dispatchRerank: mock(async () => ({
+      dispatch: vi.fn(async () => ({})),
+      dispatchEmbeddings: vi.fn(async () => ({})),
+      dispatchRerank: vi.fn(async () => ({
         id: 'rerank-123',
         model: 'accounts/fireworks/models/qwen3-reranker-8b',
         usage: {
@@ -77,12 +76,12 @@ describe('Rerank Endpoint', () => {
     } as unknown as Dispatcher;
 
     mockUsageStorage = {
-      saveRequest: mock(),
-      saveError: mock(),
-      saveDebugLog: mock(),
-      updatePerformanceMetrics: mock(),
-      emitStartedAsync: mock(),
-      emitUpdatedAsync: mock(),
+      saveRequest: vi.fn(),
+      saveError: vi.fn(),
+      saveDebugLog: vi.fn(),
+      updatePerformanceMetrics: vi.fn(),
+      emitStartedAsync: vi.fn(),
+      emitUpdatedAsync: vi.fn(),
     } as unknown as UsageStorageService;
 
     DebugManager.getInstance().setStorage(mockUsageStorage);

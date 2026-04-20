@@ -1,23 +1,65 @@
 name: PR Tests
-run-name: "PR: ${{ github.event.pull_request.title }}"
+run-name: "PR: ${{ github.event.pull_request.title || format('PR #{0}', github.event.inputs.pr_number) }}"
 
 on:
   pull_request_target:
     types: [opened, synchronize, ready_for_review, reopened]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to test (for bot-created PRs)'
+        required: true
+        type: string
+      requested_by:
+        description: 'Workflow that requested this run'
+        required: false
+        type: string
+        default: ''
 
 permissions:
   contents: read
+  checks: write
 
 jobs:
   test:
     name: Run Tests
     runs-on: ubuntu-latest
     steps:
+      - name: Get PR info for workflow_dispatch
+        if: github.event_name == 'workflow_dispatch'
+        id: get-pr
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: parseInt('${{ github.event.inputs.pr_number }}')
+            });
+            core.setOutput('head_sha', pr.head.sha);
+            core.setOutput('head_repo_full_name', pr.head.repo.full_name);
+
+      - name: Create PR check for workflow_dispatch
+        if: github.event_name == 'workflow_dispatch'
+        id: create-check
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const { data: check } = await github.rest.checks.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              name: 'PR Tests',
+              head_sha: '${{ steps.get-pr.outputs.head_sha }}',
+              status: 'in_progress',
+              started_at: new Date().toISOString()
+            });
+            core.setOutput('check_id', check.id);
+
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
-          ref: ${{ github.event.pull_request.head.sha }}
+          repository: ${{ github.event.pull_request.head.repo.full_name || steps.get-pr.outputs.head_repo_full_name }}
+          ref: ${{ github.event.pull_request.head.sha || steps.get-pr.outputs.head_sha }}
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -34,5 +76,20 @@ jobs:
 
       - name: Run backend tests
         run: cd packages/backend && bun run test
+
+      - name: Update PR check to complete
+        if: github.event_name == 'workflow_dispatch' && always()
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const conclusion = '${{ job.status }}' === 'success' ? 'success' : 'failure';
+            await github.rest.checks.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              check_run_id: '${{ steps.create-check.outputs.check_id }}',
+              status: 'completed',
+              conclusion: conclusion,
+              completed_at: new Date().toISOString()
+            });
 
 

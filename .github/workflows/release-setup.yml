@@ -1,0 +1,25 @@
+name: Setup
+on:
+  workflow_call:
+    outputs:
+      tag:
+        description: "The release tag"
+        value: ${{ jobs.setup.outputs.tag }}
+
+jobs:
+  setup:
+    name: Setup
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.release_tag.outputs.tag }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Get tag from ref
+        id: release_tag
+        run: |
+          TAG="${{ github.ref_name }}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"

@@ -1,4 +1,5 @@
 name: Pi Assistant
+run-name: ${{ github.event.issue.title || github.event.pull_request.title || 'Pi Assistant' }}
 
 on:
   issues:
@@ -11,16 +12,67 @@ on:
 jobs:
   pi-response:
     # Only trigger when the comment or issue/PR body mentions @pi
-    if: contains(github.event.comment.body || github.event.issue.body || github.event.pull_request.body || '', '@pi')
+    if: >-
+      contains(github.event.comment.body || github.event.issue.body || github.event.pull_request.body || '', '@pi')
     runs-on: ubuntu-latest
     permissions:
       contents: write
       issues: write
       pull-requests: write
+      actions: write  # Needed for workflow_dispatch to trigger review/test workflows
 
     steps:
+      - name: Detect PR context
+        id: detect-context
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const eventName = '${{ github.event_name }}';
+            
+            // For pull_request_review_comment, we have direct access to PR
+            if (eventName === 'pull_request_review_comment') {
+              const pr = context.payload.pull_request;
+              core.setOutput('is_pr', 'true');
+              core.setOutput('branch', pr.head.ref);
+              core.setOutput('mode', 'direct');
+              core.info(`PR review comment on PR #${pr.number}, branch: ${pr.head.ref}`);
+              return;
+            }
+            
+            // For issue_comment, check if it's on a PR
+            if (eventName === 'issue_comment') {
+              const issue = context.payload.issue;
+              if (issue.pull_request) {
+                // This is a PR comment - fetch PR details
+                const { data: pr } = await github.rest.pulls.get({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: issue.number
+                });
+                core.setOutput('is_pr', 'true');
+                core.setOutput('branch', pr.head.ref);
+                core.setOutput('mode', 'direct');
+                core.info(`PR issue comment on PR #${issue.number}, branch: ${pr.head.ref}`);
+                return;
+              }
+            }
+            
+            // Not a PR comment
+            core.setOutput('is_pr', 'false');
+            core.setOutput('branch', '');
+            core.setOutput('mode', 'branch');
+            core.info('Not a PR comment, using branch mode');
+
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.detect-context.outputs.branch || github.ref }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install
 
       - name: Register secrets for masking
         uses: actions/github-script@v9
@@ -31,12 +83,48 @@ jobs:
           PI_MODELS_JSON: ${{ secrets.PI_MODELS_JSON }}
 
       - name: Run pi-action
-        uses: mcowger/pi-action@main
+        id: pi-action
+        uses: mcowger/pi-action@v1
         env:
           PI_MODELS_JSON: ${{ secrets.PI_MODELS_JSON }}
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          gist_token: ${{ secrets.PI_GIST_TOKEN }}
           provider: openrouter
           model: ${{ vars.PLEXUS_MODEL }}
           pi_models_json: ${{ secrets.PI_MODELS_JSON }}
-          share_session: false
+          share_session: true
+          suppress_final_comment: true
+          branch_mode: ${{ steps.detect-context.outputs.mode }}
+
+      - name: Dispatch PR review workflow
+        # Trigger for newly created PRs OR direct mode on existing PRs
+        if: steps.pi-action.outputs.pr_number != ''
+        uses: actions/github-script@v9
+        with:
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'pi-pr-review.yml',
+              ref: 'main',
+              inputs: {
+                pr_number: '${{ steps.pi-action.outputs.pr_number }}'
+              }
+            });
+
+      - name: Dispatch PR tests workflow
+        # Trigger for newly created PRs OR direct mode on existing PRs
+        if: steps.pi-action.outputs.pr_number != ''
+        uses: actions/github-script@v9
+        with:
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'pr-tests.yml',
+              ref: 'main',
+              inputs: {
+                pr_number: '${{ steps.pi-action.outputs.pr_number }}'
+              }
+            });
