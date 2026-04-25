@@ -60,10 +60,37 @@ export class OpenAITransformer implements Transformer {
 
   async transformRequest(request: UnifiedChatRequest): Promise<any> {
     // Prepend systemInstruction as a system message if present
-    const messages =
+    const rawMessages =
       request.systemInstruction && request.systemInstruction.content
         ? [{ role: 'system', content: request.systemInstruction.content }, ...request.messages]
         : request.messages;
+
+    // Convert unified format back to OpenAI wire format:
+    // - `thinking` blocks → flat `reasoning_content` field
+    // - array `content` → string (join text parts)
+    const messages = rawMessages.map((msg: any) => {
+      if (msg.role !== 'assistant') return msg;
+
+      const out: any = { ...msg };
+
+      // Extract reasoning_content from thinking block
+      if (out.thinking?.content && !out.reasoning_content) {
+        out.reasoning_content = out.thinking.content;
+      }
+      delete out.thinking;
+      delete out.thought_signature;
+
+      // Flatten array content back to string
+      if (Array.isArray(out.content)) {
+        const text = out.content
+          .filter((p: any) => p.type === 'text')
+          .map((p: any) => p.text)
+          .join('');
+        out.content = text || null;
+      }
+
+      return out;
+    });
 
     // Normalize tools: map parametersJsonSchema -> parameters for OpenAI format.
     const normalizedTools =
