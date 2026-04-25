@@ -1,0 +1,49 @@
+type: object
+description: >
+  User quota definition. Defines a rate limit that can be assigned to API
+  keys. The quota enforcement middleware checks keys against their assigned
+  quota definition and rejects requests that would exceed the limit.
+required:
+  - type
+  - limit
+  - limitType
+properties:
+  type:
+    type: string
+    enum:
+      - rolling
+      - daily
+      - weekly
+    description: >
+      Quota window type.
+
+      - **rolling** — Sliding window of `duration` length (e.g. `1h`, `30m`,
+        `1d`). Requires the `duration` field.
+      - **daily** — Resets at midnight local time each day.
+      - **weekly** — 7-day rolling window starting from first request.
+  limitType:
+    type: string
+    enum:
+      - requests
+      - tokens
+    description: >
+      What the quota tracks and counts against the limit.
+
+      - **requests** — Number of inference requests. Each API call counts as 1.
+      - **tokens** — Sum of all token fields: `tokensInput` + `tokensOutput`
+        + `tokensCached` + `tokensCacheWrite`. This is the total tokens
+        processed, not just input or output.
+  limit:
+    type: number
+    minimum: 0
+    description: >
+      Maximum allowed value within the window. Unit depends on `limitType`:
+      - For `requests`: number of requests
+      - For `tokens`: number of tokens
+  duration:
+    type: string
+    description: >
+      Window length for `type: rolling`. Format: number + unit.
+      Examples: `1h` (1 hour), `30m` (30 minutes), `1d` (1 day),
+      `5h` (5 hours). Required only when `type` is `rolling`.
+    example: 1h

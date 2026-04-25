@@ -15,6 +15,7 @@ import {
   AlertTriangle,
   Wallet,
   CreditCard,
+  Activity,
 } from 'lucide-react';
 
 interface CompactQuotasCardProps {
@@ -52,6 +53,7 @@ export const getCheckerCategory = (quota: QuotaCheckerInfo): string => {
   if (id.includes('poe')) return 'poe';
   if (id.includes('ollama')) return 'ollama';
   if (id.includes('neuralwatt')) return 'neuralwatt';
+  if (id.includes('zenmux')) return 'zenmux';
   return 'default';
 };
 
@@ -73,6 +75,7 @@ const getTypeDisplayName = (category: string): string => {
     poe: 'POE',
     ollama: 'Ollama',
     neuralwatt: 'Neuralwatt',
+    zenmux: 'Zenmux',
   };
   return names[category] || toTitleCase(category);
 };
@@ -103,6 +106,7 @@ const formatCheckerDisplayName = (quota: QuotaCheckerInfo): string => {
     'wisdomgate-',
     'ollama-',
     'neuralwatt-',
+    'zenmux-',
   ];
   for (const prefix of prefixes) {
     if (displayPart.toLowerCase().startsWith(prefix)) {
@@ -157,6 +161,8 @@ const getCheckerIcon = (category: string) => {
       return <Bot className={iconClass} />;
     case 'neuralwatt':
       return <Wallet className={iconClass} />;
+    case 'zenmux':
+      return <Activity className={iconClass} />;
     default:
       return <Bot className={iconClass} />;
   }
@@ -181,7 +187,7 @@ export const getTrackedWindowsForChecker = (category: string, windows: any[]): s
         .filter((t) => t !== 'subscription')
         .sort((a, b) => (WINDOW_PRIORITY[a] || 99) - (WINDOW_PRIORITY[b] || 99));
     case 'wisdomgate':
-      return ['monthly'].filter((t) => availableTypes.has(t));
+      return ['subscription'].filter((t) => availableTypes.has(t));
     case 'minimax-coding':
       return ['custom'].filter((t) => availableTypes.has(t));
     case 'apertis-coding-plan':
@@ -196,6 +202,8 @@ export const getTrackedWindowsForChecker = (category: string, windows: any[]): s
       return ['five_hour', 'weekly'].filter((t) => availableTypes.has(t));
     case 'neuralwatt':
       return ['monthly'].filter((t) => availableTypes.has(t));
+    case 'zenmux':
+      return ['rolling_five_hour', 'rolling_weekly'].filter((t) => availableTypes.has(t));
     default:
       return Array.from(availableTypes)
         .filter((t) => t !== 'subscription')

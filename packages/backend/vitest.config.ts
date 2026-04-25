@@ -4,7 +4,11 @@ const isStructuredLoggerLine = (log: string) => /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:
 
 export default defineConfig({
   test: {
-    projects: ['./vitest.sqlite.config.ts', './vitest.postgres.config.ts'],
+    projects: [
+      './vitest.unit.config.ts',
+      './vitest.sqlite.config.ts',
+      './vitest.postgres.config.ts',
+    ],
     include: ['src/**/*.{test,spec}.ts', 'test/**/*.{test,spec}.ts'],
     exclude: [
       '../frontend/**',
@@ -22,8 +26,7 @@ export default defineConfig({
     clearMocks: true,
     mockReset: true,
     pool: 'forks',
-    isolate: false,
-    maxWorkers: 1,
+    isolate: true,
     server: {
       deps: {
         inline: ['zod', 'yaml', '@plexus/shared', '@mariozechner/pi-ai'],

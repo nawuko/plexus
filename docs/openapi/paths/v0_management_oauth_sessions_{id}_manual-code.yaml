@@ -1,0 +1,60 @@
+parameters:
+  - in: path
+    name: id
+    required: true
+    schema:
+      type: string
+    description: Session ID (UUID).
+post:
+  tags:
+    - Management — OAuth
+  summary: Submit a manual authorization code (admin only)
+  description: |
+    Submit an authorization code returned by the provider.
+
+    ## When to use
+
+    Use this when `status: manual-code`. This is required for providers that
+    don't use the callback server (e.g. Codex CLI, Claude Code).
+
+    Some providers display a code on their website after authentication
+    that must be copied and submitted here. The code is typically a short
+    alphanumeric string.
+
+    ## Request body
+
+    - `value` — The authorization code from the provider
+
+    ## Response
+
+    Returns the updated session. Poll again to check if authentication
+    succeeded (`status: complete`) or failed (`status: failed`).
+
+    **Admin only** — limited principals receive 403.
+  security:
+    - AdminKey: []
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            value:
+              type: string
+              description: The authorization code from the provider.
+          required:
+            - value
+  responses:
+    '200':
+      description: Updated session.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data:
+                $ref: ../components/schemas/OAuthSession.yaml
+    '401':
+      description: Authentication required or invalid credentials.
+  operationId: postV0ManagementOauthSessionsByidManualcode

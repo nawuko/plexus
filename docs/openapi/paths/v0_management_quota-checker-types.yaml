@@ -1,0 +1,60 @@
+get:
+  tags:
+    - Management — Config
+  summary: Valid built-in quota-checker type strings (admin only)
+  description: |
+    Returns the list of valid quota checker types.
+
+    ## Relationship to ProviderConfig
+
+    These types are used in `providers[*].quota.type`. When you configure
+    a provider with a quota block:
+
+    ```yaml
+    providers:
+      my-provider:
+        quota:
+          type: naga  # <-- must be one of these types
+          options:
+            apiKey: ...
+    ```
+
+    Each type corresponds to a specific quota checker implementation that
+    monitors a particular provider's quota/API limits.
+
+    **Admin only** — limited principals receive 403.
+  security:
+    - AdminKey: []
+  responses:
+    '200':
+      description: Type list.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              types:
+                type: array
+                items:
+                  type: string
+              count:
+                type: integer
+          example:
+            types:
+              - naga
+              - synthetic
+              - nanogpt
+              - zai
+              - moonshot
+              - minimax
+              - openrouter
+              - kilo
+              - openai-codex
+              - claude-code
+              - copilot
+              - wisdomgate
+              - apertis
+            count: 13
+    '401':
+      description: Authentication required or invalid credentials.
+  operationId: getV0ManagementQuotacheckertypes

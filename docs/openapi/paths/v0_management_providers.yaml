@@ -1,0 +1,29 @@
+get:
+  tags:
+    - Management — Config
+  summary: List all providers (admin only)
+  description: |
+    Returns a map of all configured providers keyed by slug.
+
+    Each entry contains the full provider configuration including:
+    - `type` — Provider type (openai, anthropic, gemini, etc.)
+    - `base_url` — Override URL for the provider
+    - `api_key` — API key (encrypted at rest)
+    - `quota` — Optional quota checker configuration
+    - GPU profile fields for energy estimation
+
+    **Admin only** — limited principals receive 403.
+  security:
+    - AdminKey: []
+  responses:
+    '200':
+      description: Provider map.
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties:
+              $ref: ../components/schemas/ProviderConfig.yaml
+    '401':
+      description: Authentication required or invalid credentials.
+  operationId: getV0ManagementProviders

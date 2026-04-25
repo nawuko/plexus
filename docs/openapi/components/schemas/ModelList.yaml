@@ -1,0 +1,15 @@
+type: object
+description: List response containing configured model aliases.
+required:
+  - object
+  - data
+properties:
+  object:
+    type: string
+    const: list
+    description: Fixed value indicating a list response.
+  data:
+    type: array
+    items:
+      $ref: ./ModelListEntry.yaml
+    description: Array of model entries.

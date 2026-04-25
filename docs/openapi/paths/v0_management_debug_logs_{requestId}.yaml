@@ -1,0 +1,57 @@
+parameters:
+  - in: path
+    name: requestId
+    required: true
+    schema:
+      type: string
+      format: uuid
+    description: The request ID of the debug log to retrieve.
+get:
+  tags:
+    - Management — Debug
+  summary: Full debug log detail
+  description: |
+    Returns the complete debug log for a specific request, including
+    raw and transformed request/response snapshots.
+
+    ## Response
+
+    Contains `rawRequest`, `transformedRequest`, `rawResponse`,
+    `transformedResponse`, and snapshot versions of each.
+
+    ## 404 conditions
+
+    - Log doesn't exist
+    - Log exists but belongs to a different key (for limited principals)
+  security:
+    - AdminKey: []
+  responses:
+    '200':
+      description: Log record.
+      content:
+        application/json:
+          schema:
+            $ref: ../components/schemas/DebugLog.yaml
+    '401':
+      description: Authentication required or invalid credentials.
+    '404':
+      description: Not found (or not visible to this principal).
+  operationId: getV0ManagementDebugLogsByrequestId
+delete:
+  tags:
+    - Management — Debug
+  summary: Delete a single debug log
+  description: |
+    Delete a specific debug log by request ID.
+
+    **Admin only** — limited principals receive 403.
+
+    Returns 404 if not found.
+  security:
+    - AdminKey: []
+  responses:
+    '200':
+      $ref: ../components/responses/SuccessTrue.yaml
+    '404':
+      description: Not found.
+  operationId: deleteV0ManagementDebugLogsByrequestId

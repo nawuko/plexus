@@ -1,0 +1,29 @@
+post:
+  tags:
+    - Inference — Images
+  summary: OpenAI-compatible image generation
+  description: |
+    Generates images from text prompts using DALL-E. Pass-through to the
+    configured provider; full OpenAI Images schema accepted.
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: ../components/schemas/ImageGenerationRequest.yaml
+        examples:
+          basic:
+            value:
+              model: dall-e-3
+              prompt: A tiny red square on a white background.
+              size: 1024x1024
+  responses:
+    '200':
+      description: Generated images.
+      content:
+        application/json:
+          schema:
+            $ref: ../components/schemas/ImageResponse.yaml
+    '401':
+      description: Authentication required or invalid credentials.
+  operationId: postV1ImagesGenerations

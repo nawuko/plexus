@@ -1,0 +1,74 @@
+get:
+  tags:
+    - Management — Config
+  summary: Get all system settings (admin only)
+  description: |
+    Returns all system settings as a key-value map.
+
+    System settings control various runtime behaviors including feature
+    flags, timeouts, and operational parameters.
+
+    See `docs/CONFIGURATION.md` for the full list of available settings.
+
+    **Admin only** — limited principals receive 403.
+  security:
+    - AdminKey: []
+  responses:
+    '200':
+      description: Key/value settings map.
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: true
+    '401':
+      description: Authentication required or invalid credentials.
+  operationId: getV0ManagementSystemsettings
+patch:
+  tags:
+    - Management — Config
+  summary: Bulk upsert system settings (admin only)
+  description: |
+    Merges the provided settings into the existing system settings.
+
+    ## Bulk merge semantics
+
+    This performs a shallow merge — each top-level key is set/overwritten.
+    Keys not in the request are preserved (not deleted).
+
+    ## Example
+
+    ```
+    PATCH /v0/management/system-settings
+    {"max_concurrent_requests": 1000, "feature_vision_fallthrough": true}
+    ```
+
+    This adds/updates those two settings while preserving all others.
+
+    See `docs/CONFIGURATION.md` for available settings and their meaning.
+
+    **Admin only** — limited principals receive 403.
+  security:
+    - AdminKey: []
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          additionalProperties: true
+          description: Partial object. Keys not listed are preserved.
+  responses:
+    '200':
+      description: Success.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              success:
+                type: boolean
+                const: true
+    '401':
+      description: Authentication required or invalid credentials.
+  operationId: patchV0ManagementSystemsettings

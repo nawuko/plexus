@@ -1,0 +1,5 @@
+description: Body failed schema validation.
+content:
+  application/json:
+    schema:
+      $ref: ../schemas/ValidationError.yaml

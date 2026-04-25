@@ -3,8 +3,9 @@
   "module": "index.ts",
   "devDependencies": {
     "@biomejs/biome": "latest",
+    "@redocly/cli": "^2.30.0",
     "bun-types": "latest",
-    "vitest": "^4.1.4"
+    "vitest": "^4.1.5"
   },
   "private": true,
   "scripts": {
@@ -24,7 +25,12 @@
     "prepare": "git rev-parse --git-dir >/dev/null 2>&1 && git config core.hooksPath .githooks || true",
     "setup:hooks": "bash scripts/setup-git-hooks.sh",
     "format": "bunx biome format --write .",
-    "format:check": "bunx biome format ."
+    "format:check": "bunx biome format .",
+    "lint": "bunx biome lint --write .",
+    "lint:check": "bunx biome lint .",
+    "lint:openapi": "npx @redocly/cli lint docs/openapi/openapi.yaml",
+    "bundle:openapi": "npx @redocly/cli bundle docs/openapi/openapi.yaml -o docs/openapi.yaml",
+    "preview:openapi": "npx @redocly/cli preview-docs docs/openapi/openapi.yaml"
   },
   "type": "module",
   "workspaces": [

@@ -3,91 +3,34 @@ name: Pi PR Review
 on:
   pull_request_target:
     types: [opened, synchronize, ready_for_review]
-  workflow_dispatch:
-    inputs:
-      pr_number:
-        description: 'PR number to review (for bot-created PRs)'
-        required: true
-        type: string
 
 jobs:
   review:
-    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
+    if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     permissions:
       contents: read
       pull-requests: write
-      checks: write
 
     steps:
-      - name: Get PR info for workflow_dispatch
-        if: github.event_name == 'workflow_dispatch'
-        id: get-pr
-        uses: actions/github-script@v9
+      - uses: actions/checkout@v6
         with:
-          script: |
-            const { data: pr } = await github.rest.pulls.get({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              pull_number: parseInt('${{ github.event.inputs.pr_number }}')
-            });
-            core.setOutput('head_sha', pr.head.sha);
-            core.setOutput('body', pr.body || '');
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
 
-      - name: Create PR check for workflow_dispatch
-        if: github.event_name == 'workflow_dispatch'
-        id: create-check
-        uses: actions/github-script@v9
+      - uses: actions/setup-node@v6
         with:
-          script: |
-            const { data: check } = await github.rest.checks.create({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              name: 'Pi PR Review',
-              head_sha: '${{ steps.get-pr.outputs.head_sha }}',
-              status: 'in_progress',
-              started_at: new Date().toISOString()
-            });
-            core.setOutput('check_id', check.id);
+          node-version: 24
 
-      - name: Require PR body
-        if: |
-          (github.event_name == 'pull_request_target' && github.event.pull_request.body == '') ||
-          (github.event_name == 'workflow_dispatch' && steps.get-pr.outputs.body == '')
-        run: |
-          echo "::error::Pull requests must include a description. Please add a body to this PR."
-          exit 1
-
-      - name: Checkout repository
-        uses: actions/checkout@v6
-        with:
-          repository: ${{ github.event.pull_request.head.repo.full_name || steps.get-pr.outputs.head_repo_full_name }}
-          ref: ${{ github.event.pull_request.head.sha || steps.get-pr.outputs.head_sha }}
-
-      - name: Run pi PR review
-        uses: mcowger/pi-action@v1
-        env:
-          PI_MODELS_JSON: ${{ secrets.PI_MODELS_JSON }}
+      - uses: mcowger/pi-coding-agent-action@refs/heads/v2
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          gist_token: ${{ secrets.PI_GIST_TOKEN }}
           provider: openrouter
           model: ${{ vars.PLEXUS_MODEL }}
-          pi_models_json: ${{ secrets.PI_MODELS_JSON }}
-          share_session: true
-          pr_number: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.pr_number || '' }}
-
-      - name: Update PR check to complete
-        if: github.event_name == 'workflow_dispatch' && always()
-        uses: actions/github-script@v9
-        with:
-          script: |
-            const conclusion = '${{ job.status }}' === 'success' ? 'success' : 'failure';
-            await github.rest.checks.update({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              check_run_id: '${{ steps.create-check.outputs.check_id }}',
-              status: 'completed',
-              conclusion: conclusion,
-              completed_at: new Date().toISOString()
-            });
+          token: ${{ secrets.OPENROUTER_API_KEY }}
+          base_url: ${{ secrets.PLEXUS_URL }}
+          thinking_level: medium
+          prompt: >
+            Review this pull request. Check for bugs, logic errors, security issues,
+            and missing test coverage. Note any style or documentation concerns but
+            focus on substantive problems. Post your findings as a PR review comment.

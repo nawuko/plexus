@@ -1,0 +1,108 @@
+parameters:
+  - in: path
+    name: slug
+    required: true
+    schema:
+      type: string
+    description: Alias slug (e.g. "gpt-4", "claude-3-opus").
+put:
+  tags:
+    - Management — Config
+  summary: Create or replace a model alias (admin only)
+  description: |
+    Creates a new alias or replaces an existing one.
+
+    ## Energy recalculation
+
+    If you change `model_architecture`, the system recalculates estimated
+    energy usage (kWh) for all affected usage records. This happens
+    asynchronously after the alias is saved.
+
+    ## Validation
+
+    The request body is validated against the `AliasConfig` schema.
+    Invalid configurations return a 400 with validation error details.
+
+    **Admin only** — limited principals receive 403.
+  security:
+    - AdminKey: []
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: ../components/schemas/AliasConfig.yaml
+        examples:
+          chat_alias:
+            summary: Chat model alias
+            value:
+              type: chat
+              targets:
+                - provider: openai
+                  model: gpt-4o
+              metadata:
+                pricing:
+                  input: 2.5
+                  output: 10
+                context_window: 128000
+          embeddings_alias:
+            summary: Embeddings model alias
+            value:
+              type: embeddings
+              targets:
+                - provider: openai
+                  model: text-embedding-3-small
+              metadata:
+                pricing:
+                  input: 0.02
+  responses:
+    '200':
+      description: Saved.
+      content:
+        application/json:
+          schema:
+            $ref: ../components/schemas/SaveSlugResult.yaml
+    '400':
+      $ref: ../components/responses/ValidationError.yaml
+  operationId: putV0ManagementAliasesByslug
+patch:
+  tags:
+    - Management — Config
+  summary: Merge updates into a model alias (admin only)
+  description: |
+    Merges the request body into the existing alias configuration,
+    then validates the result.
+
+    ## Energy recalculation
+
+    If you change `model_architecture` (or add it if it was previously unset),
+    the system recalculates estimated energy usage (kWh) for all affected
+    usage records. This happens asynchronously after the update.
+
+    ## Merge behavior
+
+    PATCH performs a shallow merge — new fields are added, existing fields
+    are overwritten, fields not in the request are preserved.
+
+    **Admin only** — limited principals receive 403.
+  security:
+    - AdminKey: []
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          additionalProperties: true
+  responses:
+    '200':
+      description: Saved.
+      content:
+        application/json:
+          schema:
+            $ref: ../components/schemas/SaveSlugResult.yaml
+    '400':
+      $ref: ../components/responses/ValidationError.yaml
+    '404':
+      description: Alias not found.
+  operationId: patchV0ManagementAliasesByslug

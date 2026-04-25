@@ -30,6 +30,7 @@ import {
   ApertisCodingPlanQuotaDisplay,
   OllamaQuotaDisplay,
   NeuralwattQuotaDisplay,
+  ZenmuxQuotaDisplay,
   CombinedBalancesCard,
   QuotaHistoryModal,
   BalanceHistoryModal,
@@ -57,6 +58,7 @@ const CHECKER_DISPLAY_NAMES: Record<string, string> = {
   'apertis-coding-plan': 'Apertis Coding',
   ollama: 'Ollama',
   neuralwatt: 'Neuralwatt',
+  zenmux: 'Zenmux',
 };
 
 export const Quotas = () => {
@@ -245,6 +247,7 @@ export const Quotas = () => {
       antigravity: <AntigravityQuotaDisplay result={result} isCollapsed={false} />,
       ollama: <OllamaQuotaDisplay result={result} isCollapsed={false} />,
       neuralwatt: <NeuralwattQuotaDisplay result={result} isCollapsed={false} />,
+      zenmux: <ZenmuxQuotaDisplay result={result} isCollapsed={false} />,
     };
 
     const display = DISPLAY_MAP[checkerType];

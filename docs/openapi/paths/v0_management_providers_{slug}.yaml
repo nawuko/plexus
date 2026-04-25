@@ -1,0 +1,201 @@
+parameters:
+  - in: path
+    name: slug
+    required: true
+    schema:
+      type: string
+    description: >
+      Provider key. May contain `/` (e.g. `openai/gpt-4`) — this enables
+      wildcard routing where requests to `openai/gpt-4` match the provider.
+get:
+  tags:
+    - Management — Config
+  summary: Get a single provider (admin only)
+  description: |
+    Returns the configuration for a specific provider.
+
+    ## Wildcard routing
+
+    The provider slug can contain `/` to match model patterns. For example,
+    `openai/gpt-4` matches requests to models like `gpt-4`, `gpt-4-turbo`,
+    etc. The dispatcher picks the most specific match.
+
+    **Admin only** — limited principals receive 403.
+  security:
+    - AdminKey: []
+  responses:
+    '200':
+      description: Provider.
+      content:
+        application/json:
+          schema:
+            $ref: ../components/schemas/ProviderConfig.yaml
+    '404':
+      description: Provider not found.
+  operationId: getV0ManagementProvidersByslug
+put:
+  tags:
+    - Management — Config
+  summary: Create or replace a provider (admin only)
+  description: |
+    Creates a new provider or replaces an existing one.
+
+    ## Validation
+
+    The request body is validated against the full `ProviderConfig` schema.
+    Invalid configurations return a 400 with validation error details.
+
+    ## Idempotency
+
+    PUT is idempotent — calling it multiple times with the same data produces
+    the same result. Use PATCH for partial updates.
+
+    **Admin only** — limited principals receive 403.
+  security:
+    - AdminKey: []
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: ../components/schemas/ProviderConfig.yaml
+        examples:
+          openai:
+            summary: OpenAI provider configuration
+            value:
+              slug: openai
+              api_type: chat
+              api_base: https://api.openai.com/v1
+              api_key: ${{ secrets.OPENAI_API_KEY }}
+              default.model: gpt-4o
+              default.parameters:
+                temperature: 0.7
+                max_tokens: 4096
+              disable_cooldown: false
+          anthropic:
+            summary: Anthropic provider configuration
+            value:
+              slug: anthropic
+              api_type: messages
+              api_base: https://api.anthropic.com
+              api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+              default.model: claude-3-5-sonnet-20241022
+              default.parameters:
+                temperature: 1.0
+                max_tokens: 4096
+  responses:
+    '200':
+      description: Saved.
+      content:
+        application/json:
+          schema:
+            $ref: ../components/schemas/SaveSlugResult.yaml
+    '400':
+      $ref: ../components/responses/ValidationError.yaml
+  operationId: putV0ManagementProvidersByslug
+patch:
+  tags:
+    - Management — Config
+  summary: Merge updates into an existing provider (admin only)
+  description: |
+    Merges the request body into the existing provider configuration,
+    then validates the result.
+
+    ## Merge behavior
+
+    Unlike PUT (which replaces), PATCH performs a shallow merge:
+    - New fields are added
+    - Existing fields are overwritten
+    - Fields not in the request are preserved
+
+    **Admin only** — limited principals receive 403.
+  security:
+    - AdminKey: []
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          additionalProperties: true
+  responses:
+    '200':
+      description: Saved.
+      content:
+        application/json:
+          schema:
+            $ref: ../components/schemas/SaveSlugResult.yaml
+    '400':
+      $ref: ../components/responses/ValidationError.yaml
+    '404':
+      description: Provider not found.
+  operationId: patchV0ManagementProvidersByslug
+delete:
+  tags:
+    - Management — Config
+  summary: Delete a provider (admin only)
+  description: |
+    Removes a provider from the configuration.
+
+    ## Cascade behavior
+
+    Use `?cascade=true` to also remove all alias targets that reference this
+    provider. Without cascade, the delete fails if any aliases target this
+    provider.
+
+    ### Cascade response
+
+    When `cascade=true`, the response includes:
+    - `removedTargets` — Array of alias targets that were removed
+    - `affectedAliases` — Array of alias slugs that lost targets
+
+    ```
+    {
+      "success": true,
+      "provider": "openai",
+      "removedTargets": ["openai/gpt-4", "openai/gpt-4o"],
+      "affectedAliases": ["my-gpt4", "default"]
+    }
+    ```
+
+    **Admin only** — limited principals receive 403.
+  security:
+    - AdminKey: []
+  parameters:
+    - in: query
+      name: cascade
+      schema:
+        type: string
+        enum:
+          - 'true'
+          - 'false'
+      description: >
+        When `true`, also removes all alias targets that reference this
+        provider. When `false` (default), delete fails if aliases reference
+        this provider.
+  responses:
+    '200':
+      description: Deleted.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              success:
+                type: boolean
+                const: true
+              provider:
+                type: string
+              removedTargets:
+                type: array
+                items:
+                  type: string
+                description: Targets removed (only with cascade=true).
+              affectedAliases:
+                type: array
+                items:
+                  type: string
+                description: Aliases that lost targets (only with cascade=true).
+    '401':
+      description: Authentication required or invalid credentials.
+  operationId: deleteV0ManagementProvidersByslug

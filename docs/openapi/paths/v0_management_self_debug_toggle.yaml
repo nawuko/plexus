@@ -1,0 +1,62 @@
+post:
+  tags:
+    - Management — Auth
+  summary: Enable or disable debug capture for the current principal's key
+  description: |
+    Toggle debug capture for a specific API key. Used by limited principals
+    to enable debug for their own key, and by admins to set per-key debug
+    without affecting global settings.
+
+    ## For limited principals
+
+    Enables debug capture for the key associated with the authenticated
+    principal. The principal must be limited (not admin).
+
+    ## For admin principals
+
+    Admins can target any key using the `keyName` query parameter.
+    This is the **only** way limited users can toggle debug — they cannot
+    use PATCH `/v0/management/debug`.
+
+    ## Response
+
+    Returns the new per-key state plus global state for context:
+    - `keyName` — The key that was modified
+    - `enabled` — Whether debug is now on for this key
+    - `enabledGlobal` — Current global debug state (for reference)
+  security:
+    - AdminKey: []
+  parameters:
+    - in: query
+      name: keyName
+      schema:
+        type: string
+      description: Required for admin callers.
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+          required:
+            - enabled
+  responses:
+    '200':
+      description: New per-key state.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              keyName:
+                type: string
+              enabled:
+                type: boolean
+              enabledGlobal:
+                type: boolean
+    '401':
+      description: Authentication required or invalid credentials.
+  operationId: postV0ManagementSelfDebugToggle

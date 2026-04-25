@@ -1,0 +1,47 @@
+get:
+  tags:
+    - Events
+  summary: Live usage event stream
+  description: |
+    Server-Sent Events stream of request lifecycle events, used by the
+    admin dashboard for real-time monitoring.
+
+    ## Event types
+
+    - **started** — Request received, dispatched to provider.
+    - **updated** — Request metadata updated (e.g. token counts known).
+    - **completed** — Request finished (success or error). Contains the
+      full `UsageRecord`.
+    - **created** — Legacy/alias for `started`.
+
+    Each event includes the `UsageRecord` payload (for `completed`) or
+    partial data (for `started`/`updated`).
+
+    ## Ping
+
+    A `ping` event is sent every 10 seconds to keep the connection alive.
+
+    ## Format
+
+    ```
+    event: completed
+    data: {"requestId":"...","date":"...","provider":"openai",...}
+    id: 1735689599000
+    ```
+
+    ## Scoping
+
+    Limited principals see only events for their own API key.
+    Admins see all events.
+  security:
+    - AdminKey: []
+  responses:
+    '200':
+      description: SSE stream.
+      content:
+        text/event-stream:
+          schema:
+            type: string
+    '401':
+      description: Authentication required or invalid credentials.
+  operationId: getV0ManagementEvents

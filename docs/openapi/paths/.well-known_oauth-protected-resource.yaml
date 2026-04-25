@@ -1,0 +1,28 @@
+get:
+  tags:
+    - MCP Proxy
+  summary: OAuth 2.0 protected resource metadata (public)
+  description: |
+    Returns OAuth 2.0 protected resource metadata for MCP client
+    compatibility.
+
+    ## Use case
+
+    MCP clients use this endpoint to discover resource protection
+    configuration.
+
+    **Not functional OAuth** — This exists for MCP client compatibility.
+
+    **No auth** — This endpoint is public.
+  security: []
+  responses:
+    '200':
+      description: Metadata.
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: true
+    '400':
+      description: Bad request.
+  operationId: getWellknownOauthprotectedresource

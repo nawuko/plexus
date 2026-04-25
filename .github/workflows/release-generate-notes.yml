@@ -6,9 +6,6 @@ on:
         required: true
         type: string
         description: "The release tag"
-    outputs:
-      pr_summary:
-        value: ${{ jobs.generate-notes.outputs.pr_summary }}
 
 jobs:
   generate-notes:
@@ -16,27 +13,31 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    outputs:
-      pr_summary: ${{ steps.pr_info.outputs.pr_summary }}
+      pull-requests: read
+
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
 
       - name: Get previous release tag
         id: prev_tag
         run: |
           CURRENT_TAG="${{ inputs.tag }}"
           CURRENT_SHA=$(git rev-parse "${CURRENT_TAG}^{}")
+          CURRENT_DATE=$(git log -1 --format=%ci "${CURRENT_SHA}")
 
-          # Find the previous tag that is an actual ancestor
           PREV_TAG=""
-          for tag in $(git tag --sort=-version:refname --list "[0-9]*.[0-9]*.[0-9]*.[0-9]*" "v*.*.*" 2>/dev/null); do
+          for tag in $(git tag --sort=-creatordate --list "[0-9]*.[0-9]*.[0-9]*.[0-9]*" "v*.*.*" 2>/dev/null); do
             if [ "$tag" = "$CURRENT_TAG" ]; then continue; fi
             tag_sha=$(git rev-parse "${tag}^{}" 2>/dev/null || true)
             [ -z "$tag_sha" ] && continue
-            if git merge-base --is-ancestor "$tag_sha" "$CURRENT_SHA" 2>/dev/null; then
+            tag_date=$(git log -1 --format=%ci "${tag_sha}")
+            if [ "$tag_date" '<' "$CURRENT_DATE" ]; then
               PREV_TAG="$tag"
               break
             fi
@@ -46,6 +47,9 @@ jobs:
           echo "tag=$PREV_TAG" >> "$GITHUB_OUTPUT"
           echo "current_tag=$CURRENT_TAG" >> "$GITHUB_OUTPUT"
           echo "current_sha=$CURRENT_SHA" >> "$GITHUB_OUTPUT"
+          if [ -n "$PREV_TAG" ]; then
+            echo "prev_sha=$(git rev-parse "${PREV_TAG}^{}")" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Gather PR and commit info between tags
         id: pr_info
@@ -60,7 +64,9 @@ jobs:
             const { execSync } = require('child_process');
             let commits;
             try {
-              commits = execSync(`git log ${prevTag}..${currentTag} --pretty=format:'%H'`, { encoding: 'utf8' }).trim().split('\n');
+              const prevDate = execSync(`git log -1 --format=%ci '${prevTag}'`, { encoding: 'utf8' }).trim();
+              const currentDate = execSync(`git log -1 --format=%ci '${currentTag}'`, { encoding: 'utf8' }).trim();
+              commits = execSync(`git log --since='${prevDate}' --until='${currentDate}' --pretty=format:'%H'`, { encoding: 'utf8' }).trim().split('\n');
             } catch (e) {
               commits = [];
             }
@@ -86,7 +92,6 @@ jobs:
                       title: pr.title,
                       url: pr.html_url,
                       author: pr.user?.login || '',
-                      authorUrl: pr.user?.html_url || '',
                       commits: []
                     });
                   }
@@ -131,108 +136,39 @@ jobs:
 
             core.setOutput('pr_summary', summary);
 
-      - name: Extract OpenRouter config
-        id: openrouter
+      - name: Write changes to file for Pi
         env:
-          PI_MODELS_JSON: ${{ secrets.PI_MODELS_JSON }}
+          PR_SUMMARY: ${{ steps.pr_info.outputs.pr_summary }}
         run: |
-          API_KEY=$(echo "$PI_MODELS_JSON" | jq -r '.providers.openrouter.apiKey // empty')
-          ENDPOINT=$(echo "$PI_MODELS_JSON" | jq -r '
-            .providers.openrouter.endpoint //
-            .providers.openrouter.baseUrl //
-            .providers.openrouter.baseURL //
-            .providers.openrouter.baseurl //
-            .providers.openrouter.base_url //
-            .providers.openrouter.apiUrl //
-            .providers.openrouter.api_url //
-            empty
-          ')
-          if [ -z "$API_KEY" ]; then
-            echo "Error: OpenRouter API key not found in PI_MODELS_JSON" >&2
-            exit 1
-          fi
-          if [ -z "$ENDPOINT" ]; then
-            echo "Error: OpenRouter endpoint not found in PI_MODELS_JSON" >&2
-            exit 1
-          fi
-          echo "::add-mask::$API_KEY"
-          echo "::add-mask::$ENDPOINT"
-          echo "key=$API_KEY" >> "$GITHUB_OUTPUT"
-          echo "endpoint=$ENDPOINT" >> "$GITHUB_OUTPUT"
+          printf '%s' "$PR_SUMMARY" > changes.md
 
-      - name: Generate release notes via LLM
-        id: release_notes
-        env:
-          LLM_API_KEY: ${{ steps.openrouter.outputs.key }}
-          LLM_ENDPOINT: ${{ steps.openrouter.outputs.endpoint }}/chat/completions
-          MODEL: ${{ vars.PLEXUS_MODEL }}
-          PROMPT: |
+      - name: Generate release notes via Pi
+        id: pi
+        uses: mcowger/pi-coding-agent-action@refs/heads/v2
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          provider: openrouter
+          model: ${{ vars.PLEXUS_MODEL }}
+          token: ${{ secrets.OPENROUTER_API_KEY }}
+          base_url: ${{ secrets.PLEXUS_URL }}
+          thinking_level: medium
+          load_builtin_extensions: false
+          prompt: >
             Generate release notes for version ${{ inputs.tag }}.
+            The file `changes.md` in the current directory lists all PRs and commits
+            included in this release. Use ONLY that content — do not look up additional
+            history. Omit CI/workflow/internal tooling changes unless they affect end users.
+            Keep the tone concise and factual. Output only the release notes markdown,
+            nothing else.
 
-            IMPORTANT RULES:
-            - Use ONLY the Source Changes listed below. Do NOT look up additional commits, PRs, issues, or repository history.
-            - Do NOT include changes that are not listed below.
-            - Do NOT mention features, fixes, or PRs from previous releases.
-            - If a change is a CI/workflow/internal tooling change (like GitHub Actions, release scripts, or prompt updates), omit it entirely unless it directly affects end users.
-            - Keep the tone concise and factual.
-
-            ## Source Changes
-
-            ${{ steps.pr_info.outputs.pr_summary }}
-        run: |
-          node -e "
-          const fs = require('fs');
-          const prompt = process.env.PROMPT;
-          const model = process.env.MODEL;
-          const apiKey = process.env.LLM_API_KEY;
-          const endpoint = process.env.LLM_ENDPOINT;
-
-          async function main() {
-            const res = await fetch(endpoint, {
-              method: 'POST',
-              headers: {
-                'Authorization': 'Bearer ' + apiKey,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                model: model,
-                messages: [
-                  { role: 'system', content: 'You are a technical writer drafting concise, factual release notes for a software project. Only use the information provided in the user message. Do not look up external data.' },
-                  { role: 'user', content: prompt }
-                ],
-                temperature: 0.3,
-              }),
-            });
-
-            if (!res.ok) {
-              const text = await res.text();
-              console.error('LLM error:', res.status, text);
-              process.exit(1);
-            }
-
-            const data = await res.json();
-            const content = data.choices?.[0]?.message?.content || '';
-
-            // Write to GITHUB_OUTPUT
-            const output = process.env.GITHUB_OUTPUT;
-            fs.appendFileSync(output, 'response<<EOF\n' + content + '\nEOF\n');
-          }
-
-          main().catch(err => {
-            console.error(err);
-            process.exit(1);
-          });
-          "
-
-      - name: Write release notes to file
+      - name: Write release notes artifact
         env:
-          NOTES: ${{ steps.release_notes.outputs.response }}
+          NOTES: ${{ steps.pi.outputs.response }}
         run: |
           mkdir -p ${{ runner.temp }}/release-notes
-          node -e "require('fs').writeFileSync('${{ runner.temp }}/release-notes/notes.md', process.env.NOTES)"
+          printf '%s' "$NOTES" > ${{ runner.temp }}/release-notes/notes.md
 
-      - name: Upload release notes artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: release-notes
           path: ${{ runner.temp }}/release-notes/notes.md

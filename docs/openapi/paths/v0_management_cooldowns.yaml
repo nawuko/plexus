@@ -1,0 +1,67 @@
+get:
+  tags:
+    - Management — Cooldowns
+  summary: List active cooldowns
+  description: |
+    Returns all providers/models currently in cooldown due to consecutive
+    failures.
+
+    ## Trigger conditions
+
+    A provider/model enters cooldown when:
+    - Configured with `disable_cooldown: false` (default)
+    - Has had multiple consecutive failed requests
+    - The failure threshold is provider-specific
+
+    ## Excluded providers
+
+    Providers configured with `disable_cooldown: true` in `plexus.yaml`
+    never appear in this list, regardless of failures.
+
+    ## Admin-only
+
+    This endpoint is available to both admin and limited principals,
+    but limited principals only see cooldowns for their own key's usage.
+
+    **Admin access:** full list. **Limited access:** scoped to own key.
+  security:
+    - AdminKey: []
+  responses:
+    '200':
+      description: Active cooldowns.
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              $ref: ../components/schemas/Cooldown.yaml
+    '401':
+      description: Authentication required or invalid credentials.
+  operationId: getV0ManagementCooldowns
+delete:
+  tags:
+    - Management — Cooldowns
+  summary: Clear all cooldowns (admin only)
+  description: |
+    Removes cooldown state from all providers/models.
+
+    ## Use cases
+
+    - Manually clear cooldowns after resolving an upstream issue
+    - Force all providers back into service after an outage
+    - Testing: reset cooldown state for reproducible tests
+
+    ## Note
+
+    This is admin-only because clearing cooldowns can lead to immediate
+    request failures if the upstream is still unhealthy.
+
+    **Admin only** — limited principals receive 403.
+  security:
+    - AdminKey: []
+  responses:
+    '200':
+      $ref: ../components/responses/SuccessTrue.yaml
+    '401':
+      description: Authentication required or invalid credentials.
+  operationId: deleteV0ManagementCooldowns
