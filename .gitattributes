@@ -1,0 +1,11 @@
+# Force binary handling for image files to prevent UTF-8 corruption during merges
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
