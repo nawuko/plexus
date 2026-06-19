@@ -92,6 +92,7 @@ export class OpenAITransformer implements Transformer {
     // Cross-API transformations (chat -> messages, chat -> gemini) remain
     // fully explicit since they're fundamentally different protocols.
     const isSameApiType = request.originalBody && request.incomingApiType?.toLowerCase() === 'chat';
+    const hasTools = normalizedTools && normalizedTools.length > 0;
 
     const out: any = isSameApiType ? { ...request.originalBody } : {};
 
@@ -101,8 +102,8 @@ export class OpenAITransformer implements Transformer {
     out.max_tokens = request.max_tokens;
     out.temperature = request.temperature;
     out.stream = request.stream;
-    out.tools = normalizedTools && normalizedTools.length > 0 ? normalizedTools : undefined;
-    out.tool_choice = request.tool_choice;
+    out.tools = hasTools ? normalizedTools : undefined;
+    out.tool_choice = hasTools ? request.tool_choice : undefined;
 
     if (request.response_format) {
       if (request.response_format.type === 'json_schema' && request.response_format.json_schema) {

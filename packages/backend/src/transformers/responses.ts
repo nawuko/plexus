@@ -56,6 +56,7 @@ export class ResponsesTransformer implements Transformer {
     // Convert tools — built-in server-side tools (web search etc.) are passed through
     // so provider adapters can coerce them; only function tools are reformatted.
     const tools = this.convertToolsForUnified(input.tools || []);
+    const hasTools = tools && tools.length > 0;
 
     return {
       requestId: input.requestId,
@@ -64,8 +65,8 @@ export class ResponsesTransformer implements Transformer {
       max_tokens: input.max_output_tokens,
       temperature: input.temperature ?? 1.0,
       stream: input.stream ?? false,
-      tools: tools.length > 0 ? tools : undefined,
-      tool_choice: this.convertToolChoiceForChatCompletions(input.tool_choice),
+      tools: hasTools ? tools : undefined,
+      tool_choice: hasTools ? this.convertToolChoiceForChatCompletions(input.tool_choice) : undefined,
       reasoning: input.reasoning,
       include: input.include,
       prompt_cache_key: input.prompt_cache_key,
