@@ -21,7 +21,10 @@ export class VisionDescriptorService {
   private static readonly _cache = new Map<string, string>();
 
   private static _cacheKey(imageUrl: string, model: string, prompt: string): string {
-    const hash = crypto.createHash('sha256').update(imageUrl + prompt).digest('hex');
+    const hash = crypto
+      .createHash('sha256')
+      .update(imageUrl + prompt)
+      .digest('hex');
     return `${model}:${hash}`;
   }
 

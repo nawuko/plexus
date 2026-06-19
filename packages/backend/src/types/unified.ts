@@ -311,7 +311,7 @@ export interface UnifiedRerankRequest {
   return_documents?: boolean;
   incomingApiType?: string;
   originalBody?: any;
-  metadata?: Record<string, any> & { plexus_key_policy?: KeyAccessPolicy };
+  metadata?: Record<string, any> & { plexus_metadata?: PlexusMetadata };
 }
 
 // Unified Rerank Response
