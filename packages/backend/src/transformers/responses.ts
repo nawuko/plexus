@@ -66,7 +66,9 @@ export class ResponsesTransformer implements Transformer {
       temperature: input.temperature ?? 1.0,
       stream: input.stream ?? false,
       tools: hasTools ? tools : undefined,
-      tool_choice: hasTools ? this.convertToolChoiceForChatCompletions(input.tool_choice) : undefined,
+      tool_choice: hasTools
+        ? this.convertToolChoiceForChatCompletions(input.tool_choice)
+        : undefined,
       reasoning: input.reasoning,
       include: input.include,
       prompt_cache_key: input.prompt_cache_key,
