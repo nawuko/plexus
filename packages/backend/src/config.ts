@@ -4,7 +4,7 @@ import { DEFAULT_VISION_DESCRIPTION_PROMPT } from './utils/constants';
 import { isValidIpRule } from './utils/ip-match';
 import { resolveGpuParams, VALID_GPU_PROFILES } from '@plexus/shared';
 import type { ModelArchitecture } from '@plexus/shared';
-import { getModel } from '@earendil-works/pi-ai';
+import { getBuiltinModel } from '@earendil-works/pi-ai/providers/all';
 
 // --- Zod Schemas ---
 
@@ -456,6 +456,11 @@ const HyperQuotaCheckerOptionsSchema = z.object({
   endpoint: z.url().optional(),
 });
 
+const SakanaQuotaCheckerOptionsSchema = z.object({
+  sessionCookie: z.string().trim().min(1, 'Sakana session cookie is required'),
+  endpoint: z.string().url().optional(),
+});
+
 const ProviderQuotaCheckerSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('naga'),
@@ -660,12 +665,42 @@ const ProviderQuotaCheckerSchema = z.discriminatedUnion('type', [
     id: z.string().trim().min(1).optional(),
     options: HyperQuotaCheckerOptionsSchema.optional().default({}),
   }),
+  z.object({
+    type: z.literal('sakana'),
+    enabled: z.boolean().default(true),
+    intervalMinutes: z.number().min(1).default(30),
+    id: z.string().trim().min(1).optional(),
+    options: SakanaQuotaCheckerOptionsSchema,
+  }),
 ]);
 
 const ModelAutosyncSchema = z.object({
   enabled: z.boolean().default(false),
   intervalMinutes: z.number().int().min(1).default(60),
 });
+
+const CompactionNativeSchema = z.object({
+  maxArrayItems: z.number().int().positive().optional(),
+  maxStringChars: z.number().int().positive().optional(),
+});
+const CompactionHeadroomSchema = z.object({
+  baseUrl: z.string().url().optional(),
+  apiKey: z.string().optional(),
+  targetRatio: z.number().min(0).max(1).nullable().optional(),
+  timeoutMs: z.number().int().min(100).max(60000).optional(),
+});
+export const CompactionOverrideSchema = z.object({
+  enabled: z.boolean().optional(),
+  strategy: z.enum(['native', 'headroom']).optional(),
+  triggerRatio: z.number().min(0).max(1).optional(),
+  absoluteTriggerTokens: z.number().int().positive().nullable().optional(),
+  minTokens: z.number().int().min(0).optional(),
+  protectRecent: z.number().int().min(0).optional(),
+  native: CompactionNativeSchema.optional(),
+  headroom: CompactionHeadroomSchema.optional(),
+});
+export const CompactionConfigSchema = CompactionOverrideSchema;
+export type CompactionSettingsConfig = z.infer<typeof CompactionOverrideSchema>;
 
 export const ProviderConfigSchema = z
   .object({
@@ -711,6 +746,7 @@ export const ProviderConfigSchema = z
     stallWindowMs: z.number().int().min(3000).max(30000).nullable().optional(),
     stallGracePeriodMs: z.number().int().min(0).max(120000).nullable().optional(),
     pi_ai_provider: z.string().optional(),
+    compaction: CompactionOverrideSchema.optional(),
   })
   .refine((data) => !!data.api_key || isOAuthProviderConfig(data), {
     message: "'api_key' must be specified for provider",
@@ -904,6 +940,7 @@ export const ModelConfigSchema = z
           .optional(),
       })
       .optional(),
+    compaction: CompactionOverrideSchema.optional(),
   })
   .transform((data) => {
     // Normalise legacy flat format to grouped format immediately.
@@ -1025,6 +1062,7 @@ const RawPlexusConfigSchema = z
     // Workspace-level pi-ai custom provider / model registries (inference-v2).
     pi_ai_custom_providers: z.record(z.string(), PiAiCustomProviderSchema).optional(),
     pi_ai_custom_models: z.record(z.string(), PiAiCustomModelSchema).optional(),
+    compaction: CompactionOverrideSchema.optional(),
   })
   .passthrough();
 
@@ -1182,14 +1220,15 @@ function hydrateConfig(config: z.infer<typeof RawPlexusConfigSchema>): PlexusCon
   // mocked) for unknown pairs — treat both as "not found".
   const registryHas = (provider: string, modelId: string): boolean => {
     try {
-      return getModel(provider as any, modelId as any) != null;
+      return getBuiltinModel(provider as any, modelId as any) != null;
     } catch {
       return false;
     }
   };
   const piPairResolves = (provider: string, modelId: string): boolean => {
     // Custom model: resolves if standalone (has api) or its inheritance base exists.
-    const cm = customModels[modelId];
+    const compoundKey = modelId.includes(':') ? modelId : `${provider}:${modelId}`;
+    const cm = customModels[compoundKey] ?? customModels[modelId];
     if (cm && cm.provider === provider) {
       if (cm.inherits) return registryHas(cm.inherits.provider, cm.inherits.model_id);
       return cm.api != null;

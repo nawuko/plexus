@@ -1,11 +1,12 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import { getModel } from '@earendil-works/pi-ai';
+import { getBuiltinModel } from '@earendil-works/pi-ai/providers/all';
 import type { Model as PiAiModel } from '@earendil-works/pi-ai';
 import { logger } from '../../utils/logger';
 import { PiAiCustomProviderSchema, PiAiCustomModelSchema } from '../../config';
 import { ConfigService } from '../../services/config-service';
+import { registerCustomProvidersWithPiAi } from '../../inference-v2/shared/pi-ai-utils';
 
-const NAME_RE = /^[a-zA-Z0-9][a-zA-Z0-9.\-_]{0,126}$/;
+const NAME_RE = /^[a-zA-Z0-9][a-zA-Z0-9.:\-_]{0,126}$/;
 
 /**
  * Register API endpoints for pi-ai custom provider / model registries
@@ -45,6 +46,10 @@ export async function registerPiAiCustomRoutes(fastify: FastifyInstance) {
       }
       try {
         await configService.savePiAiCustomProvider(name, result.data);
+        // Await re-registration so the provider is available in piAiModels before
+        // we respond — avoids a race where a request arrives before registration
+        // completes and toDispatchModel falls back to the wrong builtin API path.
+        await registerCustomProvidersWithPiAi();
         return reply.send({ success: true, name, definition: result.data });
       } catch (e: any) {
         logger.error('Failed to save pi-ai custom provider', e);
@@ -180,7 +185,7 @@ export async function registerPiAiCustomRoutes(fastify: FastifyInstance) {
       }
       let model: PiAiModel<any> | null = null;
       try {
-        model = getModel(provider as any, model_id as any) ?? null;
+        model = getBuiltinModel(provider as any, model_id as any) ?? null;
       } catch {
         model = null;
       }
