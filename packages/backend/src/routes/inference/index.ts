@@ -14,7 +14,6 @@ import { registerTranscriptionsRoute } from './transcriptions';
 import { registerSpeechRoute } from './speech';
 import { registerImagesRoute } from './images';
 import { registerResponsesRoute } from './responses';
-import { registerInferenceV2Routes } from '../../inference-v2/index';
 
 export async function registerInferenceRoutes(
   fastify: FastifyInstance,
@@ -25,7 +24,7 @@ export async function registerInferenceRoutes(
   // Public Routes (Excluded from Auth)
   await registerModelsRoute(fastify);
 
-  // Protected Routes (v1, v1beta, and /beta)
+  // Protected Routes (v1 and v1beta)
   fastify.register(async (protectedRoutes) => {
     const auth = createAuthHook();
 
@@ -42,6 +41,5 @@ export async function registerInferenceRoutes(
     await registerTranscriptionsRoute(protectedRoutes, dispatcher, usageStorage);
     await registerSpeechRoute(protectedRoutes, dispatcher, usageStorage);
     await registerImagesRoute(protectedRoutes, dispatcher, usageStorage);
-    await registerInferenceV2Routes(protectedRoutes, usageStorage, quotaEnforcer);
   });
 }

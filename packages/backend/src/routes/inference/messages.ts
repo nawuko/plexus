@@ -8,12 +8,12 @@ import { handleResponse } from '../../services/response-handler';
 import { getClientIp } from '../../utils/ip';
 import { DebugManager } from '../../services/debug-manager';
 import { QuotaEnforcer } from '../../services/quota/quota-enforcer';
-import { checkQuotaMiddleware } from '../../services/quota/quota-middleware';
+import { checkQuotaMiddleware, attachQuotaContext } from '../../services/quota/quota-middleware';
+import { saveQuotaBlockedUsage, saveQuotaExceededUsage } from './_quota-error';
 import { attachKeyAccessPolicy } from '../../utils/auth';
 import { wireUpstreamTimeout, wireEarlyDisconnectDetection } from '../../utils/timeout';
 import { wireStallDetection, getGlobalStallConfig } from '../../utils/stall';
 import { sanitizeHeaders } from '../../utils/sanitize-headers';
-import { handleBetaMessages } from '../../inference-v2';
 
 export async function registerMessagesRoute(
   fastify: FastifyInstance,
@@ -26,10 +26,6 @@ export async function registerMessagesRoute(
    * Anthropic Compatible Endpoint.
    */
   fastify.post('/v1/messages', async (request, reply) => {
-    if ((request as any).keyConfig?.beta === true) {
-      return handleBetaMessages(request, reply, { usageStorage, quotaEnforcer });
-    }
-
     const requestId = crypto.randomUUID();
     reply.header('x-request-id', requestId);
     const startTime = Date.now();
@@ -89,8 +85,12 @@ export async function registerMessagesRoute(
 
       // Check quota before processing
       if (quotaEnforcer) {
-        const allowed = await checkQuotaMiddleware(request, reply, quotaEnforcer);
-        if (!allowed) return;
+        const quotaCheck = await checkQuotaMiddleware(request, reply, quotaEnforcer);
+        if (!quotaCheck.ok) {
+          saveQuotaBlockedUsage(usageRecord, usageStorage, requestId, startTime);
+          return;
+        }
+        unifiedRequest = attachQuotaContext(unifiedRequest, quotaCheck.context);
       }
 
       const abortController = new AbortController();
@@ -153,6 +153,10 @@ export async function registerMessagesRoute(
           `Request ${requestId}: ${e.message}, usage recorded as ${e?.routingContext?.code === 'upstream_timeout' ? 'timeout' : 'cancelled'}`
         );
         return;
+      }
+      if (e?.routingContext?.code === 'quota_exceeded') {
+        saveQuotaExceededUsage(e, 'messages', usageRecord, usageStorage, requestId, startTime);
+        return reply.code(429).send(e.routingContext.body);
       }
       usageRecord.responseStatus =
         e?.routingContext?.code === 'upstream_timeout' ? 'timeout' : 'error';

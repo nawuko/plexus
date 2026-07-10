@@ -1,6 +1,6 @@
 ---
 name: plexus-management
-description: Use this skill whenever the agent needs to inspect or administer a running Plexus instance through the management API. This includes request logs, debug traces, enabling/disabling debug capture, providers and model targets, provider balances and quotas, model aliases and target groups, inference keys, user quotas, MCP gateway servers and logs, runtime settings such as failover, exploration, cooldowns, timeouts, stall detection, network restrictions, backup/restore, and system logs. Prefer this skill for any Plexus admin or operational task, even if the user only says "check Plexus", "look at logs", "update a provider", "rotate keys", "configure quotas", or "debug a request".
+description: Use this skill whenever the agent needs to inspect or administer a running Plexus instance through the management API, OR whenever debugging a bug/error/failure that touches Plexus-proxied traffic (oauth, provider routing, model targets, inference keys, MCP gateway, request/response handling) rather than searching the local codebase for it. This includes request logs, debug traces (including looking up a specific debug trace ID/UUID and any upstream error it recorded), enabling/disabling debug capture, providers and model targets, provider balances and quotas, model aliases and target groups, inference keys, user quotas, MCP gateway servers and logs, runtime settings such as failover, exploration, cooldowns, timeouts, stall detection, network restrictions, backup/restore, and system logs. Prefer this skill for any Plexus admin, operational, or live-debugging task, even if the user only says "check Plexus", "look at logs", "update a provider", "rotate keys", "configure quotas", "debug a request", "review debug trace <id>", "fix a bug in the oauth path", or "why did upstream return an error" — do not default to grep/find over the local repo for these; Plexus state lives behind the management API, not in local files.
 ---
 
 # Plexus Management API
@@ -100,7 +100,11 @@ curl -fsS "$PLEXUS_BASE_URL/v0/management/aliases" \
 ### Review Or Toggle Debug Tracing
 
 - Check state with `GET /v0/management/debug`.
-- Enable globally with `PATCH /v0/management/debug` and `{"enabled":true,"providers":null}` or set `providers` to an array of provider slugs.
+- Debug target state is in-memory only; it resets on process restart except for `DEBUG=true` startup global capture.
+- Enable globally with `PATCH /v0/management/debug` and `{"enabled":true}`.
+- Set inclusive capture targets with `PATCH /v0/management/debug` and any of `keys`, `aliases`, or `providers`, for example `{"enabled":false,"keys":["mobile-app"],"aliases":["gpt-4o-mini"],"providers":["openai"]}`.
+- Capture is inclusive: a request is recorded when any enabled dimension matches the request key, canonical model alias, selected provider, or global flag. Setting `providers` does not filter out global/key/alias capture.
+- Clear a target list by sending `null` or `[]`, for example `{"providers":null}`.
 - Disable with `PATCH /v0/management/debug` and `{"enabled":false}`.
 - List captures with `GET /v0/management/debug/logs?limit=50`.
 - Fetch a full trace with `GET /v0/management/debug/logs/{requestId}`.
@@ -173,4 +177,3 @@ To load the endpoint map, check for the local copy first. If found, read it dire
 
 local: .agents/skills/plexus-management/references/endpoint-map.md
 fallback with curl: "https://raw.githubusercontent.com/mcowger/plexus/refs/heads/main/.agents/skills/plexus-management/references/endpoint-map.md"
-

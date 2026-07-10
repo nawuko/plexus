@@ -17,6 +17,76 @@ import { encode } from 'eventsource-encoder';
 import { logger } from '../utils/logger';
 import { normalizeOpenAIChatUsage, normalizeOpenAIResponsesUsage } from '../utils/usage-normalizer';
 
+const OPENAI_RESPONSES_CALL_ID_MAX_LENGTH = 64;
+const OPENAI_RESPONSES_REASONING_CONTENT_MAX_ITEMS = 0;
+
+// Some Responses clients have been observed replaying tool calls with composite
+// IDs like "call_...|fc_...". OpenAI-compatible providers validate call_id
+// length and require the model-generated "call_..." ID when the composite ID is
+// too long, so only repair that exact observed shape once it violates the
+// OpenAI limit instead of rewriting arbitrary caller-provided IDs.
+export function normalizeCompositeResponsesCallIds(body: any): number {
+  if (!body || typeof body !== 'object' || !Array.isArray(body.input)) {
+    return 0;
+  }
+
+  let normalizedCount = 0;
+  for (const item of body.input) {
+    if (!item || typeof item !== 'object' || typeof item.call_id !== 'string') {
+      continue;
+    }
+
+    if (item.call_id.length <= OPENAI_RESPONSES_CALL_ID_MAX_LENGTH) {
+      continue;
+    }
+
+    const separatorIndex = item.call_id.indexOf('|');
+    if (separatorIndex <= 0) {
+      continue;
+    }
+
+    const callId = item.call_id.slice(0, separatorIndex);
+    const itemId = item.call_id.slice(separatorIndex + 1);
+    if (!callId.startsWith('call_') || !itemId.startsWith('fc_')) {
+      continue;
+    }
+
+    item.call_id = callId;
+    normalizedCount++;
+  }
+
+  return normalizedCount;
+}
+
+// Reasoning items are valid replay context, but some OpenAI-compatible
+// Responses providers reject replayed plaintext reasoning text with
+// "content max length 0". Drop only the optional plaintext content array once
+// it violates that limit while preserving the reasoning item, summary, status,
+// id, and encrypted_content.
+export function normalizeResponsesReasoningContent(body: any): number {
+  if (!body || typeof body !== 'object' || !Array.isArray(body.input)) {
+    return 0;
+  }
+
+  let normalizedCount = 0;
+  for (const item of body.input) {
+    if (
+      !item ||
+      typeof item !== 'object' ||
+      item.type !== 'reasoning' ||
+      !Array.isArray(item.content) ||
+      item.content.length <= OPENAI_RESPONSES_REASONING_CONTENT_MAX_ITEMS
+    ) {
+      continue;
+    }
+
+    item.content = [];
+    normalizedCount++;
+  }
+
+  return normalizedCount;
+}
+
 /**
  * ResponsesTransformer
  *
@@ -225,7 +295,10 @@ export class ResponsesTransformer implements Transformer {
     // the floor when the client is talking the same API type as the upstream
     // provider. Only fields not already set are carried through, so the
     // unified pipeline output is never overridden.
-    if (request.incomingApiType?.toLowerCase() === 'responses' && request.originalBody) {
+    if (
+      request.incomingApiType?.toLowerCase().split(':', 1)[0] === 'responses' &&
+      request.originalBody
+    ) {
       const passthroughFields = [
         'user',
         'store',
@@ -1072,7 +1145,10 @@ export class ResponsesTransformer implements Transformer {
             const { done, value: unifiedChunk } = await reader.read();
             if (done) {
               if (!hasSentCreated) {
-                ensureCreated(controller, { model: responseModel, created: responseCreatedAt });
+                ensureCreated(controller, {
+                  model: responseModel,
+                  created: responseCreatedAt,
+                });
               }
               const outputItems = finalizeOutputItems(controller);
               sendEvent(controller, {

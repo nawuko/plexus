@@ -22,8 +22,6 @@ import type {
   TimeoutConfig,
   StallConfigType,
   MetadataOverrides,
-  PiAiCustomProvider,
-  PiAiCustomModel,
 } from '../config';
 import { resolveGpuParams } from '@plexus/shared';
 
@@ -210,6 +208,38 @@ function stringifyStringArray(value: string[] | undefined): string | null {
   return normalized.length > 0 ? JSON.stringify(normalized) : null;
 }
 
+/**
+ * Serialize `config.quotas` for `api_keys.quota_names`. Unlike
+ * `stringifyStringArray`, an empty (but DEFINED) array is written as the
+ * literal `'[]'` rather than collapsed to NULL — otherwise `saveKey` with
+ * `quotas: []` (admin clearing a key's quotas) would write NULL, and the
+ * read path would then fall back to the deprecated `quota_name` column,
+ * resurrecting a quota the admin just removed. Only an actually-absent
+ * (`undefined`) `quotas` field writes NULL, preserving the legacy
+ * `quota_name` fallback for rows not yet migrated to `quota_names`.
+ */
+function stringifyQuotaNames(value: string[] | undefined): string | null {
+  if (value === undefined) return null;
+  const normalized = value.map((entry) => entry.trim()).filter(Boolean);
+  return JSON.stringify(normalized);
+}
+
+/**
+ * Effective `quotas` list for an `api_keys` row. `quota_names` (new, array)
+ * is authoritative whenever it's non-NULL — including an explicitly-saved
+ * empty array (admin cleared the key's quotas). `quota_name` (deprecated,
+ * single) is a read-fallback ONLY for rows where `quota_names` has never
+ * been written. Shared by `getAllKeys` and `getKeyBySecret` so the admin
+ * listing and live enforcement resolve quotas identically.
+ */
+function quotasFromRow(row: {
+  quotaNames: string | null;
+  quotaName: string | null;
+}): string[] | undefined {
+  if (row.quotaNames != null) return parseStringArray(row.quotaNames) ?? [];
+  return row.quotaName ? [row.quotaName] : undefined;
+}
+
 export interface OAuthCredentialsData {
   accessToken: string;
   refreshToken: string;
@@ -238,8 +268,6 @@ export class ConfigRepository {
     await this.db().delete(schema.mcpServers);
     await this.db().delete(schema.oauthCredentials);
     await this.db().delete(schema.systemSettings);
-    await this.db().delete(schema.piAiCustomProviders);
-    await this.db().delete(schema.piAiCustomModels);
   }
 
   // ─── Providers ───────────────────────────────────────────────────
@@ -358,6 +386,7 @@ export class ConfigRepository {
         config.adapter && Array.isArray(config.adapter) && config.adapter.length > 0
           ? toJson(config.adapter)
           : null,
+      autoCompat: fromBool(config.auto_compat === true),
       timeoutMs: config.timeoutMs ?? null,
       maxConcurrency: config.maxConcurrency ?? null,
       piAiProvider: config.pi_ai_provider ?? null,
@@ -423,6 +452,7 @@ export class ConfigRepository {
             cfg.adapter && Array.isArray(cfg.adapter) && cfg.adapter.length > 0
               ? toJson(cfg.adapter)
               : null,
+          autoCompat: cfg.auto_compat == null ? null : fromBool(cfg.auto_compat === true),
           maxConcurrency: cfg.maxConcurrency ?? null,
           piAiModelId: cfg.pi_ai_model_id ?? null,
           sortOrder: idx,
@@ -543,6 +573,7 @@ export class ConfigRepository {
             ...(m.accessVia ? { access_via: parseJson(m.accessVia) } : {}),
             ...(m.extraBody ? { extraBody: parseJson(m.extraBody) } : {}),
             ...(m.adapter ? { adapter: normalizeAdapterEntries(parseJson(m.adapter)) } : {}),
+            ...(m.autoCompat != null ? { auto_compat: toBool(m.autoCompat) } : {}),
             ...(m.maxConcurrency != null ? { maxConcurrency: m.maxConcurrency } : {}),
             ...(m.piAiModelId != null ? { pi_ai_model_id: m.piAiModelId } : {}),
           };
@@ -580,6 +611,7 @@ export class ConfigRepository {
       estimateTokens: toBool(row.estimateTokens),
       useClaudeMasking: toBool(row.useClaudeMasking),
       gemini_thinking_enabled: toBool(row.geminiThinkingEnabled),
+      auto_compat: toBool(row.autoCompat),
       ...(models ? { models } : {}),
       ...(row.headers ? { headers: decryptJsonField(row.headers) } : {}),
       ...(() => {
@@ -805,6 +837,8 @@ export class ConfigRepository {
   async saveAlias(slug: string, config: ModelConfig): Promise<void> {
     const schema = this.schema();
     const timestamp = now();
+    const metadataSourcePath =
+      config.metadata && 'source_path' in config.metadata ? config.metadata.source_path : undefined;
 
     const aliasData = {
       slug,
@@ -814,7 +848,7 @@ export class ConfigRepository {
       additionalAliases: config.additional_aliases ? toJson(config.additional_aliases) : null,
       advanced: config.advanced ? toJson(config.advanced) : null,
       metadataSource: config.metadata?.source ?? null,
-      metadataSourcePath: config.metadata?.source_path ?? null,
+      metadataSourcePath: metadataSourcePath ?? null,
       useImageFallthrough: fromBool(config.use_image_fallthrough === true),
       // Model architecture override for inference energy calculation
       modelArchitecture: config.model_architecture ? toJson(config.model_architecture) : null,
@@ -887,7 +921,8 @@ export class ConfigRepository {
         .delete(schema.aliasMetadataOverrides)
         .where(eq(schema.aliasMetadataOverrides.aliasId, aliasId));
 
-      const overrides = config.metadata?.overrides;
+      const overrides =
+        config.metadata && 'overrides' in config.metadata ? config.metadata.overrides : undefined;
       if (overrides && hasAnyOverrideField(overrides)) {
         await tx.insert(schema.aliasMetadataOverrides).values({
           aliasId,
@@ -972,7 +1007,14 @@ export class ConfigRepository {
 
     if (row.metadataSource) {
       const overrides = overrideRow ? overrideRowToOverrides(overrideRow) : undefined;
-      if (row.metadataSource === 'custom') {
+      if (row.metadataSource === 'disabled') {
+        result.metadata = { source: 'disabled' };
+      } else if (row.metadataSource === 'auto') {
+        result.metadata = {
+          source: 'auto',
+          ...(overrides && Object.keys(overrides).length > 0 ? { overrides } : {}),
+        };
+      } else if (row.metadataSource === 'custom') {
         // Custom sources always carry overrides (possibly empty if no row found).
         result.metadata = {
           source: 'custom',
@@ -1004,17 +1046,17 @@ export class ConfigRepository {
       const excludedModels = parseStringArray(row.excludedModels);
       const excludedProviders = parseStringArray(row.excludedProviders);
       const allowedIps = parseStringArray(row.allowedIps);
+      const quotas = quotasFromRow(row);
 
       result[row.name] = {
         secret: decrypt(row.secret),
         ...(row.comment ? { comment: row.comment } : {}),
-        ...(row.quotaName ? { quota: row.quotaName } : {}),
+        ...(quotas !== undefined ? { quotas } : {}),
         ...(allowedModels ? { allowedModels } : {}),
         ...(allowedProviders ? { allowedProviders } : {}),
         ...(excludedModels ? { excludedModels } : {}),
         ...(excludedProviders ? { excludedProviders } : {}),
         ...(allowedIps ? { allowedIps } : {}),
-        ...(row.beta ? { beta: true } : {}),
       };
     }
 
@@ -1056,19 +1098,19 @@ export class ConfigRepository {
     const excludedModels = parseStringArray(row.excludedModels);
     const excludedProviders = parseStringArray(row.excludedProviders);
     const allowedIps = parseStringArray(row.allowedIps);
+    const quotas = quotasFromRow(row);
 
     return {
       name: row.name,
       config: {
         secret: decrypt(row.secret),
         ...(row.comment ? { comment: row.comment } : {}),
-        ...(row.quotaName ? { quota: row.quotaName } : {}),
+        ...(quotas !== undefined ? { quotas } : {}),
         ...(allowedModels ? { allowedModels } : {}),
         ...(allowedProviders ? { allowedProviders } : {}),
         ...(excludedModels ? { excludedModels } : {}),
         ...(excludedProviders ? { excludedProviders } : {}),
         ...(allowedIps ? { allowedIps } : {}),
-        ...(row.beta ? { beta: true } : {}),
       },
     };
   }
@@ -1079,6 +1121,25 @@ export class ConfigRepository {
     const encryptedSecret = encrypt(config.secret);
     const secretHash = hashSecret(config.secret);
 
+    const keyData = {
+      name,
+      secret: encryptedSecret,
+      secretHash,
+      comment: config.comment ?? null,
+      // quota_names only — quota_name (legacy) is never written here so
+      // pre-migration rows keep their fallback value untouched. Writes
+      // '[]' (not NULL) when config.quotas is a defined empty array —
+      // see stringifyQuotaNames.
+      quotaNames: stringifyQuotaNames(config.quotas),
+      allowedModels: stringifyStringArray(config.allowedModels),
+      allowedProviders: stringifyStringArray(config.allowedProviders),
+      excludedModels: stringifyStringArray(config.excludedModels),
+      excludedProviders: stringifyStringArray(config.excludedProviders),
+      allowedIps: stringifyStringArray(config.allowedIps),
+      generation: null,
+      updatedAt: timestamp,
+    };
+
     const existing = await this.db()
       .select()
       .from(schema.apiKeys)
@@ -1086,42 +1147,11 @@ export class ConfigRepository {
       .limit(1);
 
     if (existing.length > 0) {
-      await this.db()
-        .update(schema.apiKeys)
-        .set({
-          secret: encryptedSecret,
-          secretHash,
-          comment: config.comment ?? null,
-          quotaName: config.quota ?? null,
-          allowedModels: stringifyStringArray(config.allowedModels),
-          allowedProviders: stringifyStringArray(config.allowedProviders),
-          excludedModels: stringifyStringArray(config.excludedModels),
-          excludedProviders: stringifyStringArray(config.excludedProviders),
-          allowedIps: stringifyStringArray(config.allowedIps),
-          beta: config.beta ?? false,
-          generation: null,
-          updatedAt: timestamp,
-        })
-        .where(eq(schema.apiKeys.name, name));
+      await this.db().update(schema.apiKeys).set(keyData).where(eq(schema.apiKeys.name, name));
     } else {
       await this.db()
         .insert(schema.apiKeys)
-        .values({
-          name,
-          secret: encryptedSecret,
-          secretHash,
-          comment: config.comment ?? null,
-          quotaName: config.quota ?? null,
-          allowedModels: stringifyStringArray(config.allowedModels),
-          allowedProviders: stringifyStringArray(config.allowedProviders),
-          excludedModels: stringifyStringArray(config.excludedModels),
-          excludedProviders: stringifyStringArray(config.excludedProviders),
-          allowedIps: stringifyStringArray(config.allowedIps),
-          beta: config.beta ?? false,
-          generation: null,
-          createdAt: timestamp,
-          updatedAt: timestamp,
-        });
+        .values({ ...keyData, createdAt: timestamp });
     }
   }
 
@@ -1138,11 +1168,22 @@ export class ConfigRepository {
     const result: Record<string, QuotaDefinition> = {};
 
     for (const row of rows) {
+      const allowedModels = parseStringArray(row.allowedModels);
+      const allowedProviders = parseStringArray(row.allowedProviders);
+      const excludedModels = parseStringArray(row.excludedModels);
+      const excludedProviders = parseStringArray(row.excludedProviders);
+
       result[row.name] = {
         type: row.quotaType as 'rolling' | 'daily' | 'weekly' | 'monthly',
         limitType: row.limitType as 'requests' | 'tokens' | 'cost',
         limit: row.limitValue,
         ...(row.duration ? { duration: row.duration } : {}),
+        ...(allowedModels ? { allowedModels } : {}),
+        ...(allowedProviders ? { allowedProviders } : {}),
+        ...(excludedModels ? { excludedModels } : {}),
+        ...(excludedProviders ? { excludedProviders } : {}),
+        ...(toBool(row.shared) ? { shared: true } : {}),
+        ...(row.warnAt != null ? { warnAt: row.warnAt } : {}),
       } as QuotaDefinition;
     }
 
@@ -1153,6 +1194,21 @@ export class ConfigRepository {
     const schema = this.schema();
     const timestamp = now();
 
+    const quotaData = {
+      name,
+      quotaType: quota.type,
+      limitType: quota.limitType,
+      limitValue: quota.limit,
+      duration: 'duration' in quota ? quota.duration : null,
+      allowedModels: stringifyStringArray(quota.allowedModels),
+      allowedProviders: stringifyStringArray(quota.allowedProviders),
+      excludedModels: stringifyStringArray(quota.excludedModels),
+      excludedProviders: stringifyStringArray(quota.excludedProviders),
+      shared: quota.shared ?? false,
+      warnAt: quota.warnAt ?? null,
+      updatedAt: timestamp,
+    };
+
     const existing = await this.db()
       .select()
       .from(schema.userQuotaDefinitions)
@@ -1162,26 +1218,12 @@ export class ConfigRepository {
     if (existing.length > 0) {
       await this.db()
         .update(schema.userQuotaDefinitions)
-        .set({
-          quotaType: quota.type,
-          limitType: quota.limitType,
-          limitValue: quota.limit,
-          duration: 'duration' in quota ? quota.duration : null,
-          updatedAt: timestamp,
-        })
+        .set(quotaData)
         .where(eq(schema.userQuotaDefinitions.name, name));
     } else {
       await this.db()
         .insert(schema.userQuotaDefinitions)
-        .values({
-          name,
-          quotaType: quota.type,
-          limitType: quota.limitType,
-          limitValue: quota.limit,
-          duration: 'duration' in quota ? quota.duration : null,
-          createdAt: timestamp,
-          updatedAt: timestamp,
-        });
+        .values({ ...quotaData, createdAt: timestamp });
     }
   }
 
@@ -1190,84 +1232,6 @@ export class ConfigRepository {
     await this.db()
       .delete(schema.userQuotaDefinitions)
       .where(eq(schema.userQuotaDefinitions.name, name));
-  }
-
-  // ─── pi-ai Custom Providers ──────────────────────────────────────
-
-  async getAllPiAiCustomProviders(): Promise<Record<string, PiAiCustomProvider>> {
-    const schema = this.schema();
-    const rows = await this.db().select().from(schema.piAiCustomProviders);
-    const result: Record<string, PiAiCustomProvider> = {};
-    for (const row of rows) {
-      const def = parseJson<PiAiCustomProvider>(row.definition);
-      if (def) result[row.name] = def;
-    }
-    return result;
-  }
-
-  async savePiAiCustomProvider(name: string, def: PiAiCustomProvider): Promise<void> {
-    const schema = this.schema();
-    const timestamp = now();
-    const existing = await this.db()
-      .select()
-      .from(schema.piAiCustomProviders)
-      .where(eq(schema.piAiCustomProviders.name, name))
-      .limit(1);
-    if (existing.length > 0) {
-      await this.db()
-        .update(schema.piAiCustomProviders)
-        .set({ definition: toJson(def), updatedAt: timestamp })
-        .where(eq(schema.piAiCustomProviders.name, name));
-    } else {
-      await this.db()
-        .insert(schema.piAiCustomProviders)
-        .values({ name, definition: toJson(def), createdAt: timestamp, updatedAt: timestamp });
-    }
-  }
-
-  async deletePiAiCustomProvider(name: string): Promise<void> {
-    const schema = this.schema();
-    await this.db()
-      .delete(schema.piAiCustomProviders)
-      .where(eq(schema.piAiCustomProviders.name, name));
-  }
-
-  // ─── pi-ai Custom Models ─────────────────────────────────────────
-
-  async getAllPiAiCustomModels(): Promise<Record<string, PiAiCustomModel>> {
-    const schema = this.schema();
-    const rows = await this.db().select().from(schema.piAiCustomModels);
-    const result: Record<string, PiAiCustomModel> = {};
-    for (const row of rows) {
-      const def = parseJson<PiAiCustomModel>(row.definition);
-      if (def) result[row.name] = def;
-    }
-    return result;
-  }
-
-  async savePiAiCustomModel(name: string, def: PiAiCustomModel): Promise<void> {
-    const schema = this.schema();
-    const timestamp = now();
-    const existing = await this.db()
-      .select()
-      .from(schema.piAiCustomModels)
-      .where(eq(schema.piAiCustomModels.name, name))
-      .limit(1);
-    if (existing.length > 0) {
-      await this.db()
-        .update(schema.piAiCustomModels)
-        .set({ definition: toJson(def), updatedAt: timestamp })
-        .where(eq(schema.piAiCustomModels.name, name));
-    } else {
-      await this.db()
-        .insert(schema.piAiCustomModels)
-        .values({ name, definition: toJson(def), createdAt: timestamp, updatedAt: timestamp });
-    }
-  }
-
-  async deletePiAiCustomModel(name: string): Promise<void> {
-    const schema = this.schema();
-    await this.db().delete(schema.piAiCustomModels).where(eq(schema.piAiCustomModels.name, name));
   }
 
   // ─── MCP Servers ─────────────────────────────────────────────────
@@ -1492,6 +1456,10 @@ export class ConfigRepository {
     ]);
 
     return { enabled, retryableStatusCodes, retryableErrors };
+  }
+
+  async getCaptureTraceOnError(): Promise<boolean> {
+    return this.getSetting<boolean>('debug.captureOnError', false);
   }
 
   async getCooldownPolicy(): Promise<CooldownPolicy> {
