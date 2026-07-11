@@ -1,11 +1,7 @@
-import { memo, useCallback, useEffect, useMemo, useState } from 'react';
-import { DeepChat } from 'deep-chat-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   CheckCircle2,
   Clock,
-  FlaskConical,
-  Key,
-  LockKeyhole,
   RefreshCw,
   Route,
   ShieldAlert,
@@ -19,19 +15,63 @@ import { Card } from '../components/ui/Card';
 import { Select } from '../components/ui/Select';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
+import {
+  PlaygroundChat,
+  type PlaygroundApi,
+  type PlaygroundToolCall,
+  type ToolMode,
+} from '../components/playground/PlaygroundChat';
 
 type ModelListResponse = {
   data?: Array<{ id?: string }>;
 };
 
-type DeepChatRequestDetails = {
-  body: unknown;
-  headers?: Record<string, string>;
+type PlaygroundPreferences = {
+  selectedKeyName?: string;
+  selectedModel?: string;
+  selectedApi?: PlaygroundApi;
+  toolMode?: ToolMode;
 };
 
-type OpenAiMessage = {
-  role: 'system' | 'user' | 'assistant' | 'tool';
-  content: string;
+const PLAYGROUND_PREFERENCES_STORAGE_KEY = 'plexus_playground_preferences';
+
+const playgroundApiOptions: Array<{ value: PlaygroundApi; label: string }> = [
+  { value: 'openai-completions', label: 'chat' },
+  { value: 'anthropic-messages', label: 'messages' },
+  { value: 'openai-responses', label: 'responses' },
+  { value: 'gemini', label: 'gemini' },
+];
+
+const playgroundApiLabel = (apiType: PlaygroundApi) =>
+  playgroundApiOptions.find((option) => option.value === apiType)?.label ?? apiType;
+
+const isPlaygroundApi = (value: unknown): value is PlaygroundApi =>
+  playgroundApiOptions.some((option) => option.value === value);
+
+const isToolMode = (value: unknown): value is ToolMode =>
+  value === 'off' || value === 'sample-tools';
+
+const loadPlaygroundPreferences = (): PlaygroundPreferences => {
+  if (typeof window === 'undefined') return {};
+
+  try {
+    const saved = JSON.parse(
+      window.localStorage.getItem(PLAYGROUND_PREFERENCES_STORAGE_KEY) ?? '{}'
+    );
+    if (!saved || typeof saved !== 'object') return {};
+
+    const preferences = saved as Record<string, unknown>;
+    return {
+      selectedKeyName:
+        typeof preferences.selectedKeyName === 'string' ? preferences.selectedKeyName : undefined,
+      selectedModel:
+        typeof preferences.selectedModel === 'string' ? preferences.selectedModel : undefined,
+      selectedApi: isPlaygroundApi(preferences.selectedApi) ? preferences.selectedApi : undefined,
+      toolMode: isToolMode(preferences.toolMode) ? preferences.toolMode : undefined,
+    };
+  } catch {
+    return {};
+  }
 };
 
 type RetryAttempt = {
@@ -64,157 +104,8 @@ type PlaygroundRouting = {
   retryHistory?: string;
 };
 
-const CHAT_COMPLETIONS_ENDPOINT = '/v1/chat/completions';
-
-const deepChatAuxiliaryStyle = `
-  :host {
-    display: block !important;
-    height: 100% !important;
-    min-height: 0 !important;
-  }
-
-  #chat-view {
-    background: transparent !important;
-    display: flex !important;
-    flex-direction: column !important;
-    height: 100% !important;
-    min-height: 0 !important;
-    overflow: hidden !important;
-  }
-
-  #messages {
-    flex: 1 1 auto !important;
-    height: auto !important;
-    min-height: 0 !important;
-    overflow-y: scroll !important;
-    overscroll-behavior: contain !important;
-    -webkit-overflow-scrolling: touch !important;
-    scrollbar-color: #334155 transparent;
-  }
-
-  #input {
-    flex: 0 0 auto !important;
-    background: #0b1324 !important;
-    border-top: 1px solid #1e293b !important;
-  }
-
-  #text-input-container {
-    background: #020617 !important;
-    border: 1px solid #334155 !important;
-    box-shadow: none !important;
-  }
-
-  #text-input {
-    color: #f8fafc !important;
-    caret-color: #f59e0b !important;
-  }
-
-  #text-input:empty:before {
-    color: #64748b !important;
-  }
-
-  #messages::-webkit-scrollbar {
-    width: 8px;
-  }
-
-  #messages::-webkit-scrollbar-track {
-    background: transparent;
-  }
-
-  #messages::-webkit-scrollbar-thumb {
-    background: #334155;
-    border-radius: 999px;
-  }
-`;
-
 const formatList = (items?: string[], emptyLabel = 'All') =>
   items && items.length > 0 ? items.join(', ') : emptyLabel;
-
-const deepChatRoleToOpenAiRole = (role?: string): OpenAiMessage['role'] => {
-  if (role === 'ai' || role === 'assistant') return 'assistant';
-  if (role === 'system' || role === 'tool') return role;
-  return 'user';
-};
-
-const stringifyContent = (content: unknown): string => {
-  if (typeof content === 'string') return content;
-  if (Array.isArray(content)) {
-    return content
-      .map((item) => {
-        if (typeof item === 'string') return item;
-        if (item && typeof item === 'object' && 'text' in item) {
-          return String((item as { text?: unknown }).text ?? '');
-        }
-        return '';
-      })
-      .filter(Boolean)
-      .join('\n');
-  }
-  return '';
-};
-
-const extractMessages = (body: unknown): OpenAiMessage[] => {
-  if (!body || typeof body !== 'object' || !('messages' in body)) return [];
-  const messages = (body as { messages?: unknown }).messages;
-  if (!Array.isArray(messages)) return [];
-
-  return messages
-    .map((message): OpenAiMessage | null => {
-      if (!message || typeof message !== 'object') return null;
-      const record = message as { role?: string; text?: unknown; content?: unknown };
-      const content = stringifyContent(record.content ?? record.text);
-      if (!content.trim()) return null;
-      return {
-        role: deepChatRoleToOpenAiRole(record.role),
-        content,
-      };
-    })
-    .filter((message): message is OpenAiMessage => message !== null);
-};
-
-const extractResponseText = (content: unknown): string => {
-  const directText = stringifyContent(content);
-  if (directText) return directText;
-
-  if (content && typeof content === 'object' && 'message' in content) {
-    const message = (content as { message?: { content?: unknown } }).message;
-    return stringifyContent(message?.content);
-  }
-
-  return '';
-};
-
-const responseToMessage = (response: unknown) => {
-  if (response && typeof response === 'object' && 'error' in response) {
-    const error = (response as { error?: string | { message?: string } }).error;
-    return { error: typeof error === 'string' ? error : error?.message || 'Request failed' };
-  }
-
-  const choices =
-    response && typeof response === 'object' && 'choices' in response
-      ? (response as { choices?: unknown[] }).choices
-      : undefined;
-  const firstChoice = Array.isArray(choices) ? choices[0] : undefined;
-  if (firstChoice && typeof firstChoice === 'object') {
-    const choice = firstChoice as {
-      message?: { content?: unknown };
-      delta?: { content?: unknown };
-      text?: unknown;
-    };
-    const text =
-      extractResponseText(choice.message?.content) ||
-      extractResponseText(choice.delta?.content) ||
-      extractResponseText(choice.text);
-    if (text) return { text };
-  }
-
-  if (response && typeof response === 'object' && 'text' in response) {
-    const text = extractResponseText((response as { text?: unknown }).text);
-    if (text) return { text };
-  }
-
-  return { error: 'Plexus returned an unsupported response shape.' };
-};
 
 const parseRetryHistory = (value?: string | null): RetryAttempt[] => {
   if (!value) return [];
@@ -241,186 +132,22 @@ const parseAttemptedProviders = (value?: string | null): string[] => {
 const formatRoute = (provider?: string | null, model?: string | null) =>
   provider && model ? `${provider}/${model}` : provider || model || 'Pending';
 
-type ChatSimulationProps = {
-  selectedKey: KeyConfig;
-  selectedModel: string;
-  adminKey: string;
-  onRoutingPending: () => void;
-  onRoutingResponse: (routing: PlaygroundRouting | null, error?: string) => void;
-};
-
-const ChatSimulation = memo(
-  ({
-    selectedKey,
-    selectedModel,
-    adminKey,
-    onRoutingPending,
-    onRoutingResponse,
-  }: ChatSimulationProps) => {
-    const requestInterceptor = (details: DeepChatRequestDetails) => {
-      window.setTimeout(onRoutingPending, 0);
-      const body = details.body && typeof details.body === 'object' ? details.body : {};
-      return {
-        ...details,
-        body: {
-          ...body,
-          model: selectedModel,
-          stream: false,
-          messages: extractMessages(body),
-        },
-      };
-    };
-
-    const responseInterceptor = (response: unknown) => {
-      const routing =
-        response && typeof response === 'object' && 'plexus' in response
-          ? ((response as { plexus?: PlaygroundRouting }).plexus ?? null)
-          : null;
-      const message = responseToMessage(response);
-      window.setTimeout(() => onRoutingResponse(routing, message.error), 0);
-      return message;
-    };
-
-    return (
-      <DeepChat
-        key={`${selectedKey.key}:${selectedModel}`}
-        connect={{
-          url: CHAT_COMPLETIONS_ENDPOINT,
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${selectedKey.secret}`,
-            'x-plexus-playground': 'true',
-            'x-admin-key': adminKey,
-          },
-          additionalBodyProps: {
-            model: selectedModel,
-            stream: false,
-          },
-        }}
-        requestInterceptor={requestInterceptor}
-        responseInterceptor={responseInterceptor}
-        introMessage={{
-          text: `Simulation active using key "${selectedKey.key}" and model "${selectedModel}".`,
-        }}
-        textInput={{
-          placeholder: {
-            text: 'Send a test prompt through Plexus...',
-            style: { color: '#64748b' },
-          },
-          styles: {
-            container: {
-              backgroundColor: '#020617',
-              border: '1px solid #334155',
-              borderRadius: '0.625rem',
-              boxShadow: 'none',
-            },
-            text: {
-              color: '#f8fafc',
-            },
-            focus: {
-              border: '1px solid #f59e0b',
-              boxShadow: '0 0 0 3px rgba(245, 158, 11, 0.18)',
-            },
-          },
-        }}
-        errorMessages={{ displayServiceErrorMessages: true }}
-        auxiliaryStyle={deepChatAuxiliaryStyle}
-        style={{
-          border: '1px solid rgb(30 41 59)',
-          borderRadius: '0.625rem',
-          height: '100%',
-          width: '100%',
-          background: 'rgb(15 23 42)',
-          boxShadow: 'none',
-          color: '#f8fafc',
-          fontFamily: 'var(--font-body)',
-          overflow: 'hidden',
-        }}
-        chatStyle={{
-          backgroundColor: 'transparent',
-          paddingTop: '0.75rem',
-          paddingBottom: '0.75rem',
-        }}
-        inputAreaStyle={{
-          backgroundColor: '#0b1324',
-          borderTop: '1px solid #1e293b',
-        }}
-        messageStyles={{
-          default: {
-            shared: {
-              bubble: {
-                borderRadius: '0.625rem',
-                fontSize: '0.8125rem',
-                lineHeight: '1.35',
-                boxShadow: 'none',
-              },
-            },
-            user: {
-              bubble: {
-                backgroundColor: '#f59e0b',
-                color: '#1a1006',
-              },
-            },
-            ai: {
-              bubble: {
-                backgroundColor: '#1e293b',
-                color: '#f8fafc',
-                border: '1px solid #334155',
-              },
-            },
-          },
-          intro: {
-            bubble: {
-              backgroundColor: '#111a30',
-              color: '#e2e8f0',
-              border: '1px solid #334155',
-            },
-          },
-          error: {
-            bubble: {
-              backgroundColor: 'rgba(239, 68, 68, 0.12)',
-              color: '#fecaca',
-              border: '1px solid rgba(239, 68, 68, 0.28)',
-            },
-          },
-        }}
-        submitButtonStyles={{
-          submit: {
-            container: {
-              default: {
-                backgroundColor: '#f59e0b',
-                borderRadius: '0.5rem',
-              },
-              hover: {
-                backgroundColor: '#fbbf24',
-              },
-            },
-            svg: {
-              styles: {
-                default: {
-                  filter: 'brightness(0) saturate(100%)',
-                },
-              },
-            },
-          },
-        }}
-      />
-    );
-  }
-);
-
-ChatSimulation.displayName = 'ChatSimulation';
-
 export const Playground = () => {
+  const [preferences] = useState(loadPlaygroundPreferences);
   const [keys, setKeys] = useState<KeyConfig[]>([]);
-  const [selectedKeyName, setSelectedKeyName] = useState('');
+  const [selectedKeyName, setSelectedKeyName] = useState(() => preferences.selectedKeyName ?? '');
   const [models, setModels] = useState<string[]>([]);
-  const [selectedModel, setSelectedModel] = useState('');
+  const [selectedModel, setSelectedModel] = useState(() => preferences.selectedModel ?? '');
+  const [selectedApi, setSelectedApi] = useState<PlaygroundApi>(
+    () => preferences.selectedApi ?? 'openai-completions'
+  );
+  const [toolMode, setToolMode] = useState<ToolMode>(() => preferences.toolMode ?? 'off');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [routingInfo, setRoutingInfo] = useState<RoutingInfo>({ status: 'idle' });
-  const adminKey = useMemo(() => localStorage.getItem('plexus_admin_key') ?? '', []);
+  const [toolCalls, setToolCalls] = useState<PlaygroundToolCall[]>([]);
+  const routingRequestRef = useRef(0);
 
   const selectedKey = useMemo(
     () => keys.find((key) => key.key === selectedKeyName) ?? null,
@@ -473,31 +200,83 @@ export const Playground = () => {
     loadData();
   }, []);
 
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        PLAYGROUND_PREFERENCES_STORAGE_KEY,
+        JSON.stringify({ selectedKeyName, selectedModel, selectedApi, toolMode })
+      );
+    } catch {
+      // Storage may be unavailable or full; the playground should remain usable.
+    }
+  }, [selectedKeyName, selectedModel, selectedApi, toolMode]);
+
   const handleRefresh = () => {
     setRefreshing(true);
     loadData();
   };
 
-  const handleRoutingPending = useCallback(() => {
+  const handleRoutingPending = useCallback((clientRequestId: string) => {
+    const requestNumber = ++routingRequestRef.current;
     setRoutingInfo({ status: 'pending' });
+    setToolCalls([]);
+
+    // Streaming responses do not have a JSON body to carry Playground metadata.
+    // The inference route persists its routing decision before it starts SSE,
+    // allowing this authenticated management request to retrieve it separately.
+    const pollRouting = async (attempt = 0): Promise<void> => {
+      try {
+        const result = await api.getLogs(1, 0, { clientRequestId });
+        const record = result.data[0];
+        if (routingRequestRef.current !== requestNumber) return;
+
+        if (record?.provider || record?.selectedModelName) {
+          const isComplete = record.responseStatus !== 'pending';
+          setRoutingInfo({
+            // The initial record contains the selected provider/model, but the
+            // API type and retry trail are written when the stream finishes.
+            status: isComplete
+              ? record.responseStatus === 'error'
+                ? 'error'
+                : 'complete'
+              : 'pending',
+            error: record.responseStatus === 'error' ? 'The request failed.' : undefined,
+            routing: {
+              requestId: record.requestId,
+              provider: record.provider ?? undefined,
+              model: record.selectedModelName ?? undefined,
+              apiType: record.outgoingApiType ?? undefined,
+              canonicalModel: record.canonicalModelName ?? undefined,
+              attemptCount: record.attemptCount ?? undefined,
+              finalAttemptProvider: record.finalAttemptProvider ?? record.provider ?? undefined,
+              finalAttemptModel: record.finalAttemptModel ?? record.selectedModelName ?? undefined,
+              allAttemptedProviders: record.allAttemptedProviders ?? undefined,
+              retryHistory: record.retryHistory ?? undefined,
+            },
+          });
+          if (isComplete) return;
+        }
+      } catch {
+        // The pending record is inserted asynchronously; retry below.
+      }
+
+      if (attempt >= 20) {
+        if (routingRequestRef.current === requestNumber) {
+          setRoutingInfo({
+            status: 'error',
+            error: 'Routing metadata was not available for this request.',
+          });
+        }
+        return;
+      }
+      window.setTimeout(() => void pollRouting(attempt + 1), 250);
+    };
+
+    void pollRouting();
   }, []);
 
-  const handleRoutingResponse = useCallback((routing: PlaygroundRouting | null, error?: string) => {
-    if (routing) {
-      setRoutingInfo({
-        status: error ? 'error' : 'complete',
-        routing,
-        error,
-      });
-    } else if (error) {
-      setRoutingInfo({ status: 'error', error });
-    } else {
-      setRoutingInfo({
-        status: 'error',
-        error:
-          'Routing metadata was not returned. Verify admin access and use a unary JSON request.',
-      });
-    }
+  const handleToolCalls = useCallback((calls: PlaygroundToolCall[]) => {
+    setToolCalls((current) => [...current, ...calls]);
   }, []);
 
   const retryHistory = parseRetryHistory(routingInfo.routing?.retryHistory);
@@ -552,138 +331,153 @@ export const Playground = () => {
           </div>
         )}
 
-        <Card
-          title="Test Configuration"
-          extra={
-            <div className="flex items-center gap-2 text-primary">
-              <FlaskConical className="h-4 w-4" />
-              <LockKeyhole className="h-4 w-4" />
-            </div>
-          }
-          dense
-        >
-          <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
-            <Select
-              label="Simulate Key"
-              value={selectedKeyName}
-              onChange={setSelectedKeyName}
-              options={keys.map((key) => ({ value: key.key, label: key.key }))}
-              placeholder="Select a key"
-              disabled={keys.length === 0}
-              className="h-9 truncate text-xs sm:text-sm"
-            />
-
-            <Select
-              label="Target Model"
-              value={selectedModel}
-              onChange={setSelectedModel}
-              options={models.map((model) => ({ value: model, label: model }))}
-              placeholder="Select a model"
-              disabled={models.length === 0}
-              className="h-9 truncate text-xs sm:text-sm"
-            />
-
-            <div className="min-w-0 rounded-md border border-border bg-bg-subtle/60 p-2">
-              <div className="mb-1 flex items-center gap-1 font-mono text-[9px] uppercase tracking-wider text-text-muted sm:text-[10px]">
-                <Key className="h-3 w-3" />
-                Key Status
+        <Card title="Test Configuration" dense>
+          <div className="grid gap-3 sm:grid-cols-[minmax(14rem,1fr)_minmax(0,2fr)]">
+            <div className="space-y-1.5">
+              <div className="space-y-1">
+                <label
+                  htmlFor="playground-key"
+                  className="font-mono text-[9px] uppercase tracking-wider text-text-muted"
+                >
+                  Key
+                </label>
+                <Select
+                  id="playground-key"
+                  value={selectedKeyName}
+                  onChange={setSelectedKeyName}
+                  options={keys.map((key) => ({ value: key.key, label: key.key }))}
+                  placeholder="Select a key"
+                  disabled={keys.length === 0}
+                  className="h-8 truncate py-1 text-xs"
+                />
               </div>
-              {selectedKey ? (
-                <div className="flex flex-wrap gap-1.5">
-                  {selectedKey.quotas?.length ? (
-                    <Badge status="info">{selectedKey.quotas.length} quota(s)</Badge>
-                  ) : (
-                    <Badge status="neutral">Default quotas</Badge>
-                  )}
+
+              <div className="space-y-1">
+                <label
+                  htmlFor="playground-model"
+                  className="font-mono text-[9px] uppercase tracking-wider text-text-muted"
+                >
+                  Model
+                </label>
+                <Select
+                  id="playground-model"
+                  value={selectedModel}
+                  onChange={setSelectedModel}
+                  options={models.map((model) => ({ value: model, label: model }))}
+                  placeholder="Select a model"
+                  disabled={models.length === 0}
+                  className="h-8 truncate py-1 text-xs"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label
+                  htmlFor="playground-api"
+                  className="font-mono text-[9px] uppercase tracking-wider text-text-muted"
+                >
+                  API
+                </label>
+                <Select
+                  id="playground-api"
+                  value={selectedApi}
+                  onChange={(value) => setSelectedApi(value as PlaygroundApi)}
+                  options={playgroundApiOptions}
+                  className="h-8 truncate py-1 text-xs"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <div className="font-mono text-[9px] uppercase tracking-wider text-text-muted">
+                  Tool Mode
                 </div>
-              ) : (
-                <span className="text-[11px] text-text-secondary sm:text-xs">
-                  No client key configured
-                </span>
-              )}
+                <label className="flex h-8 cursor-pointer items-center gap-2 text-xs text-text-secondary">
+                  <input
+                    type="checkbox"
+                    checked={toolMode === 'sample-tools'}
+                    onChange={(event) => setToolMode(event.target.checked ? 'sample-tools' : 'off')}
+                    className="h-3.5 w-3.5 accent-primary"
+                  />
+                  Sample browser tools
+                </label>
+              </div>
             </div>
 
-            <div className="min-w-0 rounded-md border border-border bg-bg-subtle/60 p-2 text-[11px] sm:text-xs">
-              <div className="mb-1 font-mono text-[9px] uppercase tracking-wider text-text-muted sm:text-[10px]">
-                Policy Check
-              </div>
-              {selectedKey &&
-              selectedModel &&
-              (!keyAllowsSelectedModel || keyExcludesSelectedModel) ? (
-                <div className="flex items-start gap-2 text-amber-200">
-                  <ShieldAlert className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
-                  <span className="line-clamp-2">Expected rejection by model policy.</span>
+            {selectedKey ? (
+              <dl className="grid content-start gap-1.5 border-t border-border pt-3 text-[11px] text-text-secondary sm:border-l sm:border-t-0 sm:pl-4 sm:pt-0">
+                <div className="grid min-w-0 grid-cols-[5.5rem_minmax(0,1fr)] items-center gap-2">
+                  <dt className="font-mono text-[9px] uppercase tracking-wider text-text-muted">
+                    Policy
+                  </dt>
+                  <dd
+                    className={
+                      selectedModel && (!keyAllowsSelectedModel || keyExcludesSelectedModel)
+                        ? 'inline-flex items-center gap-1 font-medium text-amber-200'
+                        : 'inline-flex items-center gap-1 font-medium text-success'
+                    }
+                  >
+                    {selectedModel && (!keyAllowsSelectedModel || keyExcludesSelectedModel) ? (
+                      <ShieldAlert className="h-3.5 w-3.5" />
+                    ) : (
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                    )}
+                    {selectedModel && (!keyAllowsSelectedModel || keyExcludesSelectedModel)
+                      ? 'Model blocked by key policy'
+                      : 'Model allowed'}
+                  </dd>
                 </div>
-              ) : (
-                <span className="line-clamp-2 text-text-secondary">
-                  Selection is allowed by key model scope.
-                </span>
-              )}
-            </div>
+
+                <div className="grid min-w-0 grid-cols-[5.5rem_minmax(0,1fr)] items-center gap-2">
+                  <dt className="font-mono text-[9px] uppercase tracking-wider text-text-muted">
+                    Comment
+                  </dt>
+                  <dd className="truncate text-text" title={selectedKey.comment || 'None'}>
+                    {selectedKey.comment || 'None'}
+                  </dd>
+                </div>
+
+                <div className="grid min-w-0 grid-cols-[5.5rem_minmax(0,1fr)] items-center gap-2">
+                  <dt className="font-mono text-[9px] uppercase tracking-wider text-text-muted">
+                    Models
+                  </dt>
+                  <dd
+                    className="truncate"
+                    title={`Allow: ${formatList(selectedKey.allowedModels, 'All models')} · Exclude: ${formatList(selectedKey.excludedModels, 'None')}`}
+                  >
+                    Allow {formatList(selectedKey.allowedModels, 'All')} · exclude{' '}
+                    {formatList(selectedKey.excludedModels, 'None')}
+                  </dd>
+                </div>
+
+                <div className="grid min-w-0 grid-cols-[5.5rem_minmax(0,1fr)] items-center gap-2">
+                  <dt className="font-mono text-[9px] uppercase tracking-wider text-text-muted">
+                    Providers
+                  </dt>
+                  <dd
+                    className="truncate"
+                    title={`Allow: ${formatList(selectedKey.allowedProviders, 'All providers')} · Exclude: ${formatList(selectedKey.excludedProviders, 'None')}`}
+                  >
+                    Allow {formatList(selectedKey.allowedProviders, 'All')} · exclude{' '}
+                    {formatList(selectedKey.excludedProviders, 'None')}
+                  </dd>
+                </div>
+
+                <div className="grid min-w-0 grid-cols-[5.5rem_minmax(0,1fr)] items-center gap-2">
+                  <dt className="font-mono text-[9px] uppercase tracking-wider text-text-muted">
+                    Access
+                  </dt>
+                  <dd className="truncate">
+                    IPs {formatList(selectedKey.allowedIps, 'Any')} · quotas{' '}
+                    {formatList(selectedKey.quotas, 'Defaults')}
+                  </dd>
+                </div>
+              </dl>
+            ) : (
+              <div className="flex items-center gap-2 border-t border-border pt-3 text-[11px] text-text-secondary sm:border-l sm:border-t-0 sm:pl-4 sm:pt-0">
+                <ShieldAlert className="h-3.5 w-3.5 text-text-muted" />
+                Create a client key before using the playground.
+              </div>
+            )}
           </div>
-
-          {selectedKey ? (
-            <dl className="mt-3 grid grid-cols-2 gap-2 border-t border-border pt-3 text-[11px] text-text-secondary lg:grid-cols-4 xl:text-xs">
-              <div className="min-w-0 rounded-md bg-slate-950/30 p-2">
-                <dt className="mb-0.5 truncate font-mono text-[9px] uppercase tracking-wider text-text-muted sm:text-[10px]">
-                  Comment
-                </dt>
-                <dd className="truncate text-text" title={selectedKey.comment || 'None'}>
-                  {selectedKey.comment || 'None'}
-                </dd>
-              </div>
-              <div className="min-w-0 rounded-md bg-slate-950/30 p-2">
-                <dt className="mb-0.5 truncate font-mono text-[9px] uppercase tracking-wider text-text-muted sm:text-[10px]">
-                  Models
-                </dt>
-                <dd
-                  className="truncate"
-                  title={formatList(selectedKey.allowedModels, 'All models')}
-                >
-                  Allow: {formatList(selectedKey.allowedModels, 'All')}
-                </dd>
-                <dd className="truncate" title={formatList(selectedKey.excludedModels, 'None')}>
-                  Exclude: {formatList(selectedKey.excludedModels, 'None')}
-                </dd>
-              </div>
-              <div className="min-w-0 rounded-md bg-slate-950/30 p-2">
-                <dt className="mb-0.5 truncate font-mono text-[9px] uppercase tracking-wider text-text-muted sm:text-[10px]">
-                  Providers
-                </dt>
-                <dd
-                  className="truncate"
-                  title={formatList(selectedKey.allowedProviders, 'All providers')}
-                >
-                  Allow: {formatList(selectedKey.allowedProviders, 'All')}
-                </dd>
-                <dd className="truncate" title={formatList(selectedKey.excludedProviders, 'None')}>
-                  Exclude: {formatList(selectedKey.excludedProviders, 'None')}
-                </dd>
-              </div>
-              <div className="min-w-0 rounded-md bg-slate-950/30 p-2">
-                <dt className="mb-0.5 truncate font-mono text-[9px] uppercase tracking-wider text-text-muted sm:text-[10px]">
-                  IPs / Quotas
-                </dt>
-                <dd
-                  className="truncate"
-                  title={formatList(selectedKey.allowedIps, 'Any source IP')}
-                >
-                  IPs: {formatList(selectedKey.allowedIps, 'Any')}
-                </dd>
-                <dd
-                  className="truncate"
-                  title={formatList(selectedKey.quotas, 'None — uses defaults')}
-                >
-                  Quotas: {formatList(selectedKey.quotas, 'Defaults')}
-                </dd>
-              </div>
-            </dl>
-          ) : (
-            <div className="mt-3 flex items-center gap-2 border-t border-border pt-3 text-xs text-text-secondary">
-              <ShieldAlert className="h-4 w-4 text-text-muted" />
-              Create a client key before using the playground.
-            </div>
-          )}
         </Card>
 
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
@@ -693,19 +487,23 @@ export const Playground = () => {
             extra={
               <div className="flex items-center gap-2 text-xs text-text-muted">
                 <SlidersHorizontal className="h-3.5 w-3.5" />
-                {selectedModel || 'No model selected'}
+                {selectedModel
+                  ? `${playgroundApiLabel(selectedApi)} · ${toolMode === 'sample-tools' ? 'tools on · ' : ''}${selectedModel}`
+                  : 'No model selected'}
               </div>
             }
             flush
           >
             {selectedKey && selectedModel ? (
               <div className="h-[clamp(18rem,calc(100dvh-22rem),42.5rem)] overflow-hidden p-3 sm:p-4">
-                <ChatSimulation
+                <PlaygroundChat
+                  key={`${selectedKey.key}:${selectedModel}:${selectedApi}:${toolMode}`}
                   selectedKey={selectedKey}
                   selectedModel={selectedModel}
-                  adminKey={adminKey}
+                  selectedApi={selectedApi}
+                  toolMode={toolMode}
                   onRoutingPending={handleRoutingPending}
-                  onRoutingResponse={handleRoutingResponse}
+                  onToolCalls={handleToolCalls}
                 />
               </div>
             ) : (
@@ -789,6 +587,34 @@ export const Playground = () => {
                 </div>
               </div>
 
+              {toolCalls.length > 0 && (
+                <div className="rounded-md border border-border bg-bg-subtle/40 p-3">
+                  <div className="mb-2 font-mono text-[10px] uppercase tracking-wider text-text-muted">
+                    Browser tool calls
+                  </div>
+                  <ol className="space-y-2">
+                    {toolCalls.map((toolCall, index) => (
+                      <li
+                        key={`${toolCall.name}:${toolCall.arguments}:${index}`}
+                        className="rounded border border-border/70 bg-slate-950/30 p-2"
+                      >
+                        <div className="mb-1 font-medium text-text">
+                          {index + 1}. {toolCall.name}
+                        </div>
+                        <div className="font-mono text-[10px] text-text-muted">Arguments</div>
+                        <pre className="mt-0.5 max-h-24 overflow-auto whitespace-pre-wrap break-words rounded bg-slate-950/60 p-1.5 font-mono text-[10px] text-text-secondary">
+                          {toolCall.arguments}
+                        </pre>
+                        <div className="mt-2 font-mono text-[10px] text-text-muted">Result</div>
+                        <pre className="mt-0.5 max-h-24 overflow-auto whitespace-pre-wrap break-words rounded bg-slate-950/60 p-1.5 font-mono text-[10px] text-text-secondary">
+                          {toolCall.result}
+                        </pre>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              )}
+
               {attemptedProviders.length > 0 && (
                 <div className="rounded-md border border-border bg-bg-subtle/40 p-3">
                   <div className="mb-2 font-mono text-[10px] uppercase tracking-wider text-text-muted">
@@ -839,7 +665,7 @@ export const Playground = () => {
                   </ol>
                 ) : (
                   <div className="text-[11px] text-text-muted">
-                    Routing details appear after the next unary playground request.
+                    Routing details appear once the next playground request is routed.
                   </div>
                 )}
               </div>

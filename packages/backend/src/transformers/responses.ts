@@ -705,6 +705,38 @@ export class ResponsesTransformer implements Transformer {
     const decoder = new TextDecoder();
     let responseModel = '';
     let responseId = '';
+    // Responses output indexes identify items in the whole response, whereas
+    // Chat Completions tool call indexes identify only tool calls. Keep a
+    // stable mapping so parallel calls remain independently assemblable even
+    // when their argument deltas are interleaved with other output items.
+    const toolCallIndexByOutputIndex = new Map<number, number>();
+    const toolCallIndexByItemId = new Map<string, number>();
+    let nextToolCallIndex = 0;
+    let hasFunctionCall = false;
+
+    const getToolCallIndex = (data: any): number => {
+      const outputIndex =
+        typeof data.output_index === 'number' ? (data.output_index as number) : undefined;
+      const itemId =
+        typeof data.item_id === 'string'
+          ? data.item_id
+          : typeof data.item?.id === 'string'
+            ? data.item.id
+            : undefined;
+      const index =
+        (outputIndex === undefined ? undefined : toolCallIndexByOutputIndex.get(outputIndex)) ??
+        (itemId === undefined ? undefined : toolCallIndexByItemId.get(itemId)) ??
+        nextToolCallIndex++;
+
+      if (outputIndex !== undefined) {
+        toolCallIndexByOutputIndex.set(outputIndex, index);
+      }
+      if (itemId !== undefined) {
+        toolCallIndexByItemId.set(itemId, index);
+      }
+
+      return index;
+    };
 
     return new ReadableStream({
       async start(controller) {
@@ -746,6 +778,7 @@ export class ResponsesTransformer implements Transformer {
                 });
               } else if (data.type === 'response.function_call_arguments.delta') {
                 // Tool call arguments delta
+                hasFunctionCall = true;
                 controller.enqueue({
                   id: responseId,
                   model: responseModel,
@@ -753,7 +786,7 @@ export class ResponsesTransformer implements Transformer {
                   delta: {
                     tool_calls: [
                       {
-                        index: 0,
+                        index: getToolCallIndex(data),
                         function: {
                           arguments: data.delta,
                         },
@@ -767,6 +800,7 @@ export class ResponsesTransformer implements Transformer {
                 data.item?.type === 'function_call'
               ) {
                 // Tool call start
+                hasFunctionCall = true;
                 controller.enqueue({
                   id: responseId,
                   model: responseModel,
@@ -774,7 +808,7 @@ export class ResponsesTransformer implements Transformer {
                   delta: {
                     tool_calls: [
                       {
-                        index: 0,
+                        index: getToolCallIndex(data),
                         id: data.item.call_id,
                         type: 'function',
                         function: {
@@ -787,15 +821,21 @@ export class ResponsesTransformer implements Transformer {
                   finish_reason: null,
                 });
               } else if (data.type === 'response.completed') {
-                // Final chunk with usage data and finish reason
+                // Final chunk with usage data and an OpenAI-compatible finish reason.
+                // `response.completed` includes the full output as a fallback because some
+                // Responses-compatible providers omit intermediate function-call events.
                 const usage = data.response?.usage;
                 const normalizedUsage = usage ? normalizeOpenAIResponsesUsage(usage) : undefined;
+                const completedResponseHasFunctionCall = data.response?.output?.some(
+                  (item: any) => item?.type === 'function_call'
+                );
                 controller.enqueue({
                   id: responseId,
                   model: responseModel,
                   created: Math.floor(Date.now() / 1000),
                   delta: {},
-                  finish_reason: 'stop',
+                  finish_reason:
+                    hasFunctionCall || completedResponseHasFunctionCall ? 'tool_calls' : 'stop',
                   usage: normalizedUsage,
                 });
               }
