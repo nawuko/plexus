@@ -1,6 +1,14 @@
 ---
 name: plexus-management
-description: Use this skill whenever the agent needs to inspect or administer a running Plexus instance through the management API, OR whenever debugging a bug/error/failure that touches Plexus-proxied traffic (oauth, provider routing, model targets, inference keys, MCP gateway, request/response handling) rather than searching the local codebase for it. This includes request logs, debug traces (including looking up a specific debug trace ID/UUID and any upstream error it recorded), enabling/disabling debug capture, providers and model targets, provider balances and quotas, model aliases and target groups, inference keys, user quotas, MCP gateway servers and logs, runtime settings such as failover, exploration, cooldowns, timeouts, stall detection, network restrictions, backup/restore, and system logs. Prefer this skill for any Plexus admin, operational, or live-debugging task, even if the user only says "check Plexus", "look at logs", "update a provider", "rotate keys", "configure quotas", "debug a request", "review debug trace <id>", "fix a bug in the oauth path", or "why did upstream return an error" — do not default to grep/find over the local repo for these; Plexus state lives behind the management API, not in local files.
+description: >-
+  Use this skill to inspect or administer a running Plexus instance via the management API, or debug
+  failures touching Plexus-proxied traffic (oauth, routing, model targets, raw provider passthrough, inference keys, MCP gateway)
+  rather than searching the local codebase. Covers request logs, debug traces (lookup by UUID), enabling/disabling
+  debug capture, providers, model targets, balances, quotas, aliases, target groups, keys, MCP logs, and
+  runtime settings (failover, cooldowns, timeouts, backup/restore). Prefer this for any Plexus admin, operational,
+  or live-debugging task, even if the user only says "check Plexus", "look at logs", "update a provider",
+  "rotate keys", "configure quotas", "debug a request", "review debug trace", or "upstream error" — Plexus state
+  lives behind the management API, not in local files.
 ---
 
 # Plexus Management API
@@ -45,8 +53,8 @@ curl -fsS "$PLEXUS_STAGING_URL/v0/management/providers" \
 Prefer the summary endpoint whenever the user wants totals, rollups, dashboards, or time-window aggregates. It performs aggregation server-side and avoids undercounting that can happen if you inspect only the first page of raw usage rows.
 
 ```bash
-curl -fsS "$PLEXUS_BASE_URL/v0/management/usage/summary?range=week" \
-  -H "x-admin-key: $PLEXUS_ADMIN_KEY" | jq .
+curl -fsS "$PLEXUS_STAGING_URL/v0/management/usage/summary?range=week" \
+  -H "x-admin-key: $PLEXUS_STAGING_ADMIN_KEY" | jq .
 ```
 
 Use `range=hour|day|week|month`, or `range=custom&startDate=...&endDate=...` when the user needs a specific window.
@@ -56,23 +64,23 @@ Use `range=hour|day|week|month`, or `range=custom&startDate=...&endDate=...` whe
 Use raw usage reads for request-level inspection, spot checks, and debugging individual calls.
 
 ```bash
-curl -fsS "$PLEXUS_BASE_URL/v0/management/usage?limit=20&sortDir=desc" \
-  -H "x-admin-key: $PLEXUS_ADMIN_KEY" | jq .
+curl -fsS "$PLEXUS_STAGING_URL/v0/management/usage?limit=20&sortDir=desc" \
+  -H "x-admin-key: $PLEXUS_STAGING_ADMIN_KEY" | jq .
 ```
 
 ### Redacted Key Listing
 
 ```bash
-curl -fsS "$PLEXUS_BASE_URL/v0/management/keys" \
-  -H "x-admin-key: $PLEXUS_ADMIN_KEY" \
+curl -fsS "$PLEXUS_STAGING_URL/v0/management/keys" \
+  -H "x-admin-key: $PLEXUS_STAGING_ADMIN_KEY" \
   | jq 'with_entries(.value.secret = "<redacted>")'
 ```
 
 ### JSON Write
 
 ```bash
-curl -fsS -X PATCH "$PLEXUS_BASE_URL/v0/management/config/failover" \
-  -H "x-admin-key: $PLEXUS_ADMIN_KEY" \
+curl -fsS -X PATCH "$PLEXUS_STAGING_URL/v0/management/config/failover" \
+  -H "x-admin-key: $PLEXUS_STAGING_ADMIN_KEY" \
   -H "content-type: application/json" \
   --data '{"enabled":true}' | jq .
 ```
@@ -82,8 +90,8 @@ curl -fsS -X PATCH "$PLEXUS_BASE_URL/v0/management/config/failover" \
 Use this when making a precise edit to a larger object. Review the generated payload before sending it.
 
 ```bash
-curl -fsS "$PLEXUS_BASE_URL/v0/management/aliases" \
-  -H "x-admin-key: $PLEXUS_ADMIN_KEY" \
+curl -fsS "$PLEXUS_STAGING_URL/v0/management/aliases" \
+  -H "x-admin-key: $PLEXUS_STAGING_ADMIN_KEY" \
   | jq '."my-alias" | .target_groups[0].targets += [{"provider":"openai","model":"gpt-4o-mini"}]'
 ```
 
@@ -117,6 +125,8 @@ curl -fsS "$PLEXUS_BASE_URL/v0/management/aliases" \
 - Delete provider: `DELETE /v0/management/providers/{slug}`. Use `?cascade=true` only when the user wants alias targets referencing that provider removed too.
 - Fetch upstream models for setup: `POST /v0/management/providers/fetch-models` with `{"url":"https://.../v1/models","apiKey":"..."}`.
 - Check provider quota checker status and balances with `GET /v0/management/quota-checkers`, `GET /v0/management/quotas`, and `GET /v0/management/quotas/{checkerId}`.
+- Raw provider access is configured with `raw_passthrough: { enabled, base_url, auth }`, where `auth` is `bearer`, `x-api-key`, or `x-goog-api-key`. It is supported for static API-key providers and exposes `/raw/{provider}/*` without model routing, failover, adapters, or payload transformation.
+- Treat raw enablement as high-impact: inspect the provider and relevant key policies first. A caller also needs `allowRawPassthrough: true`, and its provider allow/deny lists still apply.
 
 ### Manage Model Aliases And Targets
 
@@ -130,9 +140,10 @@ curl -fsS "$PLEXUS_BASE_URL/v0/management/aliases" \
 ### Manage Inference Keys
 
 - List keys: `GET /v0/management/keys`, redacted by default.
-- Create or replace key: `PUT /v0/management/keys/{name}` with `secret` and optional `comment`, `allowedProviders`, `excludedProviders`, `allowedModels`, `excludedModels`, `allowedIps`, and `quota`.
+- Create or replace key: `PUT /v0/management/keys/{name}` with `secret` and optional `comment`, `allowedProviders`, `excludedProviders`, `allowedModels`, `excludedModels`, `allowedIps`, `allowRawPassthrough`, and `quota`.
 - Omit `quota` for unrestricted keys; do not send `quota: null` because the current write schema accepts only strings when the field is present.
 - Network restrictions are managed per inference key with `allowedIps` CIDR/IP entries, not through a separate network endpoint.
+- `allowRawPassthrough: true` is provider-wide for every raw-enabled provider permitted by the key's provider policy. Model allow/deny lists do not constrain raw requests.
 - Delete key: `DELETE /v0/management/keys/{name}`. Usage history remains attached to the key name, but future requests with that key fail.
 
 ### Manage User Quotas Applied To Inference Keys

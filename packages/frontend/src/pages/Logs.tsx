@@ -55,6 +55,7 @@ import {
   ChevronDown,
   Image as ImageIcon,
   ShieldCheck,
+  Braces,
   RotateCcw,
   PencilLine,
   Plane,
@@ -86,6 +87,8 @@ import chatLogo from '../assets/chat.svg';
 import geminiLogo from '../assets/gemini.svg';
 // @ts-ignore
 import responsesLogo from '../assets/responses.svg';
+
+const SSE_HEARTBEAT_TIMEOUT_MS = 30_000;
 
 interface RetryAttemptDetail {
   index: number;
@@ -380,10 +383,27 @@ export const Logs = () => {
     //   false — connection-level error (transient; safe to retry)
     //   null  — permanent server error (4xx); stop retrying
     const connectOnce = async (): Promise<boolean | null> => {
+      const connectionController = new AbortController();
+      const abortConnection = () => connectionController.abort();
+      controller.signal.addEventListener('abort', abortConnection, { once: true });
+      let heartbeatTimer: ReturnType<typeof setTimeout> | undefined;
+      let heartbeatTimedOut = false;
+      let streamConnected = false;
+
+      const resetHeartbeatTimer = () => {
+        clearTimeout(heartbeatTimer);
+        heartbeatTimer = setTimeout(() => {
+          heartbeatTimedOut = true;
+          connectionController.abort();
+        }, SSE_HEARTBEAT_TIMEOUT_MS);
+      };
+
+      resetHeartbeatTimer();
+
       try {
         const response = await fetch('/v0/management/events', {
           headers: { 'x-admin-key': adminKey },
-          signal: controller.signal,
+          signal: connectionController.signal,
         });
 
         if (!response.ok) {
@@ -399,8 +419,10 @@ export const Logs = () => {
         const reader = response.body?.getReader();
         if (!reader) return false;
 
+        streamConnected = true;
         sseConnected.current = true;
         setSseStatus('connected');
+        resetHeartbeatTimer();
 
         const decoder = new TextDecoder();
         let buffer = '';
@@ -412,6 +434,8 @@ export const Logs = () => {
             break;
           }
 
+          // Any bytes prove the stream is alive; the server sends a ping every 10 seconds.
+          resetHeartbeatTimer();
           buffer += decoder.decode(value, { stream: true });
           const lines = buffer.split('\n\n'); // SSE messages are separated by double newline
           buffer = lines.pop() || '';
@@ -513,11 +537,20 @@ export const Logs = () => {
       } catch (err: any) {
         handleDisconnect();
         if (err.name === 'AbortError') {
-          // Intentional teardown — do not retry.
-          throw err;
+          if (controller.signal.aborted) {
+            // Intentional teardown — do not retry.
+            throw err;
+          }
+          if (heartbeatTimedOut) {
+            console.warn('SSE heartbeat timed out — reconnecting');
+            return streamConnected;
+          }
         }
         console.error('Log stream error:', err);
         return false;
+      } finally {
+        clearTimeout(heartbeatTimer);
+        controller.signal.removeEventListener('abort', abortConnection);
       }
     };
 
@@ -892,8 +925,10 @@ export const Logs = () => {
                         <div className="min-w-0 rounded bg-bg-subtle px-1.5 py-1">
                           <div className="flex items-center gap-1 text-text">
                             <div className="flex w-4 shrink-0 justify-center">
-                              {log.incomingApiType === 'embeddings' ||
-                              log.incomingApiType === 'rerank' ? (
+                              {log.incomingApiType === 'raw' ? (
+                                <Braces size={16} className="text-cyan-400" />
+                              ) : log.incomingApiType === 'embeddings' ||
+                                log.incomingApiType === 'rerank' ? (
                                 <Variable size={14} className="text-green-500" />
                               ) : log.incomingApiType === 'transcriptions' ? (
                                 <AudioLines size={14} className="text-purple-500" />
@@ -917,8 +952,10 @@ export const Logs = () => {
                             </div>
                             <span className="text-[10px] text-text-muted">→</span>
                             <div className="flex w-4 shrink-0 justify-center">
-                              {log.outgoingApiType === 'embeddings' ||
-                              log.outgoingApiType === 'rerank' ? (
+                              {log.outgoingApiType === 'raw' ? (
+                                <Braces size={16} className="text-cyan-400" />
+                              ) : log.outgoingApiType === 'embeddings' ||
+                                log.incomingApiType === 'rerank' ? (
                                 <Variable size={14} className="text-green-500" />
                               ) : log.outgoingApiType === 'transcriptions' ? (
                                 <AudioLines size={14} className="text-purple-500" />
@@ -1119,7 +1156,7 @@ export const Logs = () => {
                       </td>
                       <td
                         className="px-2 py-1.5 text-left border-b border-border-glass text-text align-middle whitespace-nowrap"
-                        title={`Incoming: ${formatApiTypeLabel(log.incomingApiType)} → Outgoing: ${formatApiTypeLabel(log.outgoingApiType)} • ${log.isStreamed ? 'Streamed' : 'Non-streamed'} • ${log.outgoingApiType && PI_AI_OUTGOING_TYPES.has(log.outgoingApiType) ? 'pi-ai native' : log.isPassthrough ? 'Direct/Passthrough' : 'Translated'}`}
+                        title={`Incoming: ${formatApiTypeLabel(log.incomingApiType)} → Outgoing: ${formatApiTypeLabel(log.outgoingApiType)} • ${log.isStreamed ? 'Streamed' : 'Non-streamed'} • ${log.isRaw ? `Raw ${log.requestMethod || ''} ${log.requestPath || ''}` : log.outgoingApiType && PI_AI_OUTGOING_TYPES.has(log.outgoingApiType) ? 'pi-ai native' : log.isPassthrough ? 'Direct/Passthrough' : 'Translated'}`}
                         style={{ cursor: 'help' }}
                       >
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
@@ -1201,8 +1238,10 @@ export const Logs = () => {
                             <div
                               style={{ width: '16px', display: 'flex', justifyContent: 'center' }}
                             >
-                              {log.outgoingApiType &&
-                              PI_AI_OUTGOING_TYPES.has(log.outgoingApiType) ? (
+                              {log.isRaw ? (
+                                <Braces size={12} className="text-cyan-400" />
+                              ) : log.outgoingApiType &&
+                                PI_AI_OUTGOING_TYPES.has(log.outgoingApiType) ? (
                                 <Pi size={12} className="text-emerald-400" />
                               ) : log.isPassthrough ? (
                                 <MoveHorizontal size={12} className="text-yellow-500" />

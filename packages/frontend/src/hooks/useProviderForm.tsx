@@ -75,6 +75,11 @@ export const EMPTY_PROVIDER: Provider = {
   adapter: [],
   timeoutMs: undefined,
   maxConcurrency: undefined,
+  rawPassthrough: {
+    enabled: false,
+    baseUrl: '',
+    auth: 'bearer',
+  },
 };
 
 export interface FetchedModel {
@@ -343,6 +348,19 @@ export function useProviderForm() {
       if (isOAuthMode && !providerToSave.oauthAccount?.trim()) {
         toast.error('OAuth account is required');
         return;
+      }
+      if (providerToSave.rawPassthrough?.enabled) {
+        if (isOAuthMode) {
+          toast.error('Raw passthrough currently supports static API-key providers only');
+          return;
+        }
+        try {
+          const rawBaseUrl = new URL(providerToSave.rawPassthrough.baseUrl);
+          if (!['http:', 'https:'].includes(rawBaseUrl.protocol)) throw new Error();
+        } catch {
+          toast.error('Raw passthrough requires a valid HTTP(S) base URL');
+          return;
+        }
       }
       if (providerToSave.quotaChecker && !providerToSave.quotaChecker.type?.trim()) {
         providerToSave = { ...providerToSave, quotaChecker: undefined };
