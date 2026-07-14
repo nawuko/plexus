@@ -210,13 +210,12 @@ const ModelProviderConfigSchema = z.object({
   pi_ai_model_id: z.string().optional(),
 });
 
-const OAuthProviderSchema = z.enum([
-  'anthropic',
-  'openai-codex',
-  'github-copilot',
-  'google-gemini-cli',
-  'google-antigravity',
-]);
+// Gemini CLI / Antigravity OAuth were removed. Their enum
+// values are gone, so new configs referencing them are rejected on write; any
+// persisted rows are purged at startup by
+// ConfigService.dropRetiredOAuthProviders() (which loads from DB columns, not
+// this schema, so old rows never fail to load before they are dropped).
+const OAuthProviderSchema = z.enum(['anthropic', 'openai-codex', 'github-copilot']);
 
 const NagaQuotaCheckerOptionsSchema = z.object({
   apiKey: z.string().min(1, 'Naga provisioning key is required'),
@@ -957,6 +956,11 @@ export type MetadataOverrides = z.infer<typeof MetadataOverridesSchema>;
 export const KeyConfigSchema = z.object({
   secret: z.string(),
   comment: z.string().optional(),
+  // Accepted only when creating a key. The repository derives and persists an
+  // immutable absolute expiry timestamp from this duration.
+  expiresInMinutes: z.number().int().positive().optional(),
+  expiresAt: z.number().int().positive().optional(),
+  disabledAt: z.number().int().positive().optional(),
   // Deprecated: single quota-definition reference. Still accepted on input
   // (indefinitely) for backward compat. Not auto-normalized by this schema —
   // callers must run parsed/merged data through `normalizeKeyConfig` (see
@@ -1114,6 +1118,10 @@ export type ProviderConfig = z.infer<typeof ProviderConfigSchema>;
 export type ModelProviderConfig = z.infer<typeof ModelProviderConfigSchema>;
 export type ModelConfig = z.infer<typeof ModelConfigSchema>;
 export type KeyConfig = z.infer<typeof KeyConfigSchema>;
+
+export function isKeyDisabled(key: Pick<KeyConfig, 'expiresAt' | 'disabledAt'>, at = Date.now()) {
+  return key.disabledAt !== undefined || (key.expiresAt !== undefined && key.expiresAt <= at);
+}
 export type ModelTarget = z.infer<typeof ModelTargetSchema>;
 export type ModelTargetGroup = z.infer<typeof ModelTargetGroupSchema>;
 export type SelectorType = z.infer<typeof SelectorTypeSchema>;
@@ -1394,7 +1402,7 @@ function buildProviderQuotaConfigs(config: z.infer<typeof RawPlexusConfigSchema>
 export function getConfig(): PlexusConfig {
   // Try ConfigService first (database-backed config)
   try {
-    const { ConfigService } = require('./services/config-service');
+    const { ConfigService } = require('./services/configuration/config-service');
     const instance = ConfigService.getInstance();
     return instance.getConfig();
   } catch (e: any) {
@@ -1447,7 +1455,7 @@ export function setConfigForTesting(config: PlexusConfig) {
 
   currentConfig = normalised;
   try {
-    const { ConfigService } = require('./services/config-service');
+    const { ConfigService } = require('./services/configuration/config-service');
     ConfigService.setInstanceForTesting(normalised);
   } catch {
     // ConfigService may not be available in all test environments

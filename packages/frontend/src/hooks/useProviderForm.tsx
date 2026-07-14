@@ -22,10 +22,10 @@ const KNOWN_APIS = [
 export const OAUTH_PROVIDERS = [
   { value: 'anthropic', label: 'Anthropic (Claude Code Pro/Max)' },
   { value: 'github-copilot', label: 'GitHub Copilot' },
-  { value: 'google-gemini-cli', label: 'Google Cloud Code Assist (Gemini CLI)' },
-  { value: 'google-antigravity', label: 'Antigravity (Gemini 3, Claude, GPT-OSS)' },
   { value: 'openai-codex', label: 'ChatGPT Plus/Pro (Codex Subscription)' },
 ];
+// Gemini CLI / Antigravity OAuth were dropped; they are no
+// longer offered as new-provider options.
 
 const getOAuthCheckerType = (oauthProvider?: string): string | null => {
   if (!oauthProvider) return null;
@@ -34,8 +34,6 @@ const getOAuthCheckerType = (oauthProvider?: string): string | null => {
     anthropic: 'claude-code',
     'claude-code': 'claude-code',
     'github-copilot': 'copilot',
-    'google-gemini-cli': 'gemini-cli',
-    'google-antigravity': 'antigravity',
   };
   return map[oauthProvider] ?? null;
 };

@@ -5,7 +5,7 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import { getConfig, type PlexusConfig } from '../../config';
 import { logger } from '../../utils/logger';
-import { ConfigService } from '../../services/config-service';
+import { ConfigService } from '../../services/configuration/config-service';
 import { McpUsageStorageService } from '../../services/mcp-proxy/mcp-usage-storage';
 import { getClientIp } from '../../utils/ip';
 import { ManagementAuthError, authenticate, requireAdmin } from '../management/_principal';
@@ -62,6 +62,7 @@ const DESTRUCTIVE_OPERATIONS = new Set([
   'quota_clear',
   'delete_log',
   'delete_all_logs',
+  'disable',
   'restore',
   'restart',
   'rotate',
@@ -830,6 +831,15 @@ async function handleKeyTool(
           `/v0/management/keys/${encodeURIComponent(requireId(input, 'key'))}`
         )
       );
+    case 'disable':
+      return successResponse(
+        input.operation,
+        await callManagementRoute(
+          shimContext,
+          'POST',
+          `/v0/management/keys/${encodeURIComponent(requireId(input, 'key'))}/disable`
+        )
+      );
     default:
       throw unsupportedOperation(input.operation, [
         'list',
@@ -838,6 +848,7 @@ async function handleKeyTool(
         'create',
         'update',
         'delete',
+        'disable',
       ]);
   }
 }

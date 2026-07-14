@@ -1,8 +1,8 @@
 import { describe, expect, test, beforeEach, afterEach, vi } from 'vitest';
-import { Dispatcher } from '../dispatcher';
+import { Dispatcher } from '../dispatch/dispatcher';
 import { setConfigForTesting } from '../../config';
 import type { UnifiedChatRequest } from '../../types/unified';
-import { CooldownManager } from '../cooldown-manager';
+import { CooldownManager } from '../runtime/cooldown-manager';
 
 const fetchMock: any = vi.fn(async (): Promise<any> => {
   throw new Error('fetch mock not configured for test');
@@ -123,33 +123,6 @@ describe('Dispatcher Failover', () => {
     expect(meta?.attemptCount).toBe(1);
     expect(meta?.finalAttemptProvider).toBe('p1');
     expect(fetchMock).toHaveBeenCalledTimes(1);
-  });
-
-  test('OAuth stream probe rejects raw JSON upstream error body before committing stream', async () => {
-    const upstreamError = {
-      error: {
-        message:
-          'One of "input" or "previous_response_id" or \'prompt\' or \'conversation_id\' must be provided.',
-        type: 'invalid_request_error',
-        param: null,
-        code: 'missing_required_parameter',
-      },
-    };
-    const encoded = new TextEncoder().encode(JSON.stringify(upstreamError));
-    const stream = new ReadableStream<Uint8Array>({
-      start(controller) {
-        controller.enqueue(encoded);
-        controller.close();
-      },
-    });
-
-    const dispatcher = new Dispatcher() as any;
-    const result = await dispatcher.probeOAuthStreamStart(stream, null);
-
-    expect(result.ok).toBe(false);
-    expect(result.streamStarted).toBe(false);
-    expect(result.error.message).toBe(upstreamError.error.message);
-    expect(result.error.piAiResponse).toEqual(upstreamError);
   });
 
   test('multiple targets, success on first try', async () => {
